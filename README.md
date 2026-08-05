@@ -1,6 +1,6 @@
 # 大模型推理压缩与本地化部署方案
 
-[![OpenI](https://openi.pcl.ac.cn/jiysh/llm-deploy/badges)](https://openi.pcl.ac.cn/jiysh/llm-deploy)
+[![GitHub](https://img.shields.io/badge/GitHub-transcope%2Fllm--deploy-181717?logo=github)](https://github.com/transcope/llm-deploy)
 
 面向服务器 GPU 环境的大模型量化压缩与高效推理部署完整解决方案，支持 Qwen/DeepSeek 系列 7B-32B+ 模型及多模态 VLM。
 

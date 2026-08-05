@@ -18,6 +18,10 @@ bak/
 # ZCode workspace
 .zcode/
 
+# Credentials
+.git-credentials
+nul
+
 # macOS
 .DS_Store
 
