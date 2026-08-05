@@ -23,7 +23,7 @@ ARG INSTALL_VLLM=true
 
 # 构建参数: 是否自动安装量化工具链
 # - true:  构建时自动安装 (默认)
-# - false: 构建时跳过, 可在运行后手动执行 /app/scripts/install_quant_tools.sh
+# - false: 构建时跳过, 可在运行后手动执行 bash /app/cases/v100/install_quant_tools.sh
 ARG INSTALL_QUANT_TOOLS=true
 
 LABEL maintainer="LLM Deploy Team"
@@ -191,13 +191,13 @@ RUN if [ "$INSTALL_BASE_ONLY" = "true" ]; then \
 
 # 量化工具链 (可选, 构建时通过 INSTALL_QUANT_TOOLS 控制)
 # 脚本已内置兼容版本, 也支持在容器内手动运行:
-#   bash /app/scripts/install_quant_tools.sh
-COPY scripts/install_quant_tools.sh /app/scripts/install_quant_tools.sh
-RUN chmod +x /app/scripts/install_quant_tools.sh && \
+#   bash /app/cases/v100/install_quant_tools.sh
+COPY cases/v100/install_quant_tools.sh /app/cases/v100/install_quant_tools.sh
+RUN chmod +x /app/cases/v100/install_quant_tools.sh && \
     if [ "$INSTALL_BASE_ONLY" = "true" ]; then \
         echo "[构建参数] INSTALL_BASE_ONLY=true, 跳过量化工具链自动安装"; \
     elif [ "$INSTALL_QUANT_TOOLS" = "true" ]; then \
-        /app/scripts/install_quant_tools.sh; \
+        /app/cases/v100/install_quant_tools.sh; \
     else \
         echo "[构建参数] INSTALL_QUANT_TOOLS=false, 跳过量化工具链自动安装"; \
     fi
@@ -260,13 +260,13 @@ RUN if [ "$INSTALL_BASE_ONLY" != "true" ]; then \
 WORKDIR /app
 
 # 复制项目文件
-COPY scripts/ /app/scripts/
+COPY src/ /app/src/
 COPY configs/ /app/configs/
 COPY requirements.txt /app/
 COPY docker/entrypoint.sh /app/
 COPY docker/v100-deploy.sh /app/
 
-RUN chmod +x /app/entrypoint.sh /app/v100-deploy.sh /app/scripts/*.py
+RUN chmod +x /app/entrypoint.sh /app/v100-deploy.sh /app/src/*.py
 
 # =============================================================================
 # 验证安装

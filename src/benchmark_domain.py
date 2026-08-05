@@ -9,25 +9,25 @@
 
 用法:
     # 通过 API 评测 (服务启动后)
-    python scripts/benchmark_domain.py \
+    python src/benchmark_domain.py \
         --base-url http://192.168.192.186:8000 \
         --model Qwen3-8B-GPTQ \
         --output results/domain_eval.json
 
     # 评测基线模型 (通过 API)
-    python scripts/benchmark_domain.py \
+    python src/benchmark_domain.py \
         --base-url http://192.168.192.186:8001 \
         --model Mind-SLLM-Qwen3-8B \
         --output results/domain_baseline.json
 
     # 本地加载模型评测 (需 GPU)
-    python scripts/benchmark_domain.py \
+    python src/benchmark_domain.py \
         --local \
         --model /app/local_models/Mind-SLLM-Qwen3-8B \
         --output results/domain_eval.json
 
     # 指定 benchmark 数据
-    python scripts/benchmark_domain.py \
+    python src/benchmark_domain.py \
         --benchmark data/custom_data/accuracy_benchmark.jsonl \
         --num-samples 50 \
         --base-url http://localhost:8000 \

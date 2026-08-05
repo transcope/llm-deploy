@@ -3,7 +3,7 @@
 模拟 36 个 layer (model.layers.0 .. model.layers.35), 验证 patch 后
 match_modules 返回的顺序是 0,1,2,...,35 而非字典序 0,1,10,11,...,19,2,20,...
 """
-# 注意: scripts/ 路径由 tests/conftest.py 统一注入 sys.path, 此处不再硬编码
+# 注意: src/ 路径由 tests/conftest.py 统一注入 sys.path, 此处不再硬编码
 
 import torch
 import torch.nn as nn

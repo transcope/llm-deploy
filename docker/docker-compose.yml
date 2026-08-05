@@ -22,7 +22,7 @@ services:
         # false: 构建时跳过, 启动容器后手动安装 vllm
         - INSTALL_VLLM=true
         # true: 构建时自动安装量化工具链 (默认)
-        # false: 构建时跳过, 启动容器后手动运行: bash /app/scripts/install_quant_tools.sh
+        # false: 构建时跳过, 启动容器后手动运行: bash /app/cases/v100/install_quant_tools.sh
         - INSTALL_QUANT_TOOLS=true
     image: llm-deploy:v100
     runtime: nvidia
@@ -50,7 +50,8 @@ services:
       # 缓存目录 (避免重复下载)
       - ../cache:/app/cache
       # 脚本和配置
-      - ../scripts:/app/scripts
+      - ../src:/app/src
+      - ../cases:/app/cases
       - ../configs:/app/configs
       # 可选: 挂载本地模型 (不存在时可先在宿主机创建: sudo mkdir -p /data/models)
       - /data/models:/data/models:ro
@@ -94,7 +95,7 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=0
     command: >
-      python scripts/quantize_model.py --help
+      python src/quantize_model.py --help
     deploy:
       resources:
         reservations:
@@ -113,7 +114,7 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=0
     command: >
-      python scripts/benchmark_eval.py --help
+      python src/benchmark_eval.py --help
     deploy:
       resources:
         reservations:

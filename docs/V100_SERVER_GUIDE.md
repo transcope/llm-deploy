@@ -20,11 +20,11 @@ cd /volume/workspace/llm-deploy
 # 步骤 4：根据任务选择虚拟环境
 #   量化模型 → 量化环境 (venv-quant)
 source /app/venv-quant/bin/activate
-#   或 source scripts/activate_quant.sh
+#   或 source cases/v100/activate_quant.sh
 
 #   部署/评测 → 部署评测环境 (venv-deploy)
 source /app/venv-deploy/bin/activate
-#   或 source scripts/activate_deploy.sh
+#   或 source cases/v100/activate_deploy.sh
 ```
 
 **记住：每次新开终端都要执行步骤 2~4。**
@@ -56,8 +56,8 @@ source /app/venv-deploy/bin/activate
 | `/app/venv/` | Python 环境（旧，保留兼容） |
 | `/app/venv-quant/` | **量化环境**（gptqmodel 2.0.0 + 量化工具链） |
 | `/app/venv-deploy/` | **部署评测环境**（vLLM + transformers，无 gptqmodel） |
-| `/volume/workspace/llm-deploy/scripts/activate_quant.sh` | 量化环境快捷激活脚本 |
-| `/volume/workspace/llm-deploy/scripts/activate_deploy.sh` | 部署评测环境快捷激活脚本 |
+| `/volume/workspace/llm-deploy/src/activate_quant.sh` | 量化环境快捷激活脚本 |
+| `/volume/workspace/llm-deploy/src/activate_deploy.sh` | 部署评测环境快捷激活脚本 |
 | `/volume/workspace/llm-deploy/requirements-quant.txt` | 量化环境依赖快照 |
 | `/volume/workspace/llm-deploy/requirements-deploy.txt` | 部署评测环境依赖快照 |
 | `/volume/workspace/llm-deploy/data/calibration/` | 校准数据目录（含 v1/v2） |
@@ -87,7 +87,7 @@ source /app/venv-deploy/bin/activate
 | 推理引擎 | vLLM 0.8.3 | vLLM 0.8.3 |
 | 量化工具 | gptqmodel 2.0.0, bitsandbytes 0.49.2, llmcompressor 0.4.0, compressed-tensors 0.9.2 | ❌ 无 |
 | optimum | ✅ (不含 [gptq] 扩展) | ✅ (不含 [gptq] 扩展) |
-| 快捷激活 | `source scripts/activate_quant.sh` | `source scripts/activate_deploy.sh` |
+| 快捷激活 | `source cases/v100/activate_quant.sh` | `source cases/v100/activate_deploy.sh` |
 
 ### 3.3 激活方式
 
@@ -97,8 +97,8 @@ source /app/venv-quant/bin/activate     # 量化环境
 source /app/venv-deploy/bin/activate    # 部署评测环境
 
 # 方式 B：快捷脚本（推荐，显示版本信息）
-source scripts/activate_quant.sh
-source scripts/activate_deploy.sh
+source cases/v100/activate_quant.sh
+source cases/v100/activate_deploy.sh
 ```
 
 ### 3.4 从零重建
@@ -125,7 +125,7 @@ pip install -r /volume/workspace/llm-deploy/requirements-deploy.txt
 
 ```bash
 # 复制单个文件到容器
-cat "D:/project/opencode/llm-deploy/scripts/build_accuracy_benchmark.py" | ssh jiysh@192.168.192.186 "docker exec -i zetta_ld bash -c 'cat > /volume/workspace/llm-deploy/scripts/build_accuracy_benchmark.py'"
+cat "D:/project/opencode/llm-deploy/src/build_accuracy_benchmark.py" | ssh jiysh@192.168.192.186 "docker exec -i zetta_ld bash -c 'cat > /volume/workspace/llm-deploy/src/build_accuracy_benchmark.py'"
 ```
 
 ---
@@ -242,7 +242,7 @@ docker logs zetta_ld
 docker ps -a
 
 # 在容器内执行单条命令（无需交互式）
-docker exec zetta_ld bash -c 'source /app/venv/bin/activate && python scripts/build_accuracy_benchmark.py --help'
+docker exec zetta_ld bash -c 'source /app/venv/bin/activate && python src/build_accuracy_benchmark.py --help'
 ```
 
 ---

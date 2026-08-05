@@ -3,7 +3,7 @@
 # V100 量化工具链手动/可选安装脚本
 # 用途:
 #   - Dockerfile 中通过 INSTALL_QUANT_TOOLS=true 自动调用
-#   - 也可在运行中的容器内手动执行: bash /app/scripts/install_quant_tools.sh
+#   - 也可在运行中的容器内手动执行: bash /app/cases/v100/install_quant_tools.sh
 #
 # 版本说明:
 #   该脚本安装的版本与 vllm==0.7.1 / torch==2.5.1 保持一致:

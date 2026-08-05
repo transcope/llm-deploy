@@ -126,8 +126,8 @@ data/
 涉及文件：
 - `docs/EVALUATION_PROTOCOL.md`：18 处引用
 - `docs/CALIBRATION_GUIDE.md`：1 处引用
-- `scripts/build_accuracy_benchmark.py`：2 处
-- `scripts/build_calibration_data.py`：1 处
+- `src/build_accuracy_benchmark.py`：2 处
+- `src/build_calibration_data.py`：1 处
 
 ### 项目缺口
 - ❌ 文档路径未随重构同步更新

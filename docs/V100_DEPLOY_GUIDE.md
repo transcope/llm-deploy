@@ -177,7 +177,7 @@ vllm serve Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4 \
 
 ```bash
 # 使用 GPTQModel 量化 (容器内执行)
-python scripts/quantize_model.py \
+python src/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --output /app/models/Qwen2.5-7B-GPTQ \
@@ -205,7 +205,7 @@ GPTQ 量化有两个后端，产出格式和 V100 兼容性不同。**V100 必�
 **V100 生产量化命令（推荐）**：
 
 ```bash
-python scripts/quantize_model.py \
+python src/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --config configs/gptq_4bit_v100_gptqmodel.yaml \
@@ -248,7 +248,7 @@ vllm serve Qwen/Qwen2.5-7B-Instruct \
 
 ```bash
 # 使用 llm-compressor 量化
-python scripts/quantize_model.py \
+python src/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method w8a8 \
     --output /app/models/Qwen2.5-7B-W8A8
@@ -334,13 +334,13 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 vllm serve Qwen/Qwen2.5-72B-Instruct \
 # 在容器内执行
 
 # 1. 评测原始模型精度 (基准)
-python scripts/benchmark_eval.py \
+python src/benchmark_eval.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --tasks gsm8k,hellaswag \
     --output /app/results/baseline
 
 # 2. 评测量化模型精度
-python scripts/benchmark_eval.py \
+python src/benchmark_eval.py \
     --model /app/models/Qwen2.5-7B-GPTQ \
     --quantization gptq \
     --tasks gsm8k,hellaswag \
@@ -358,7 +358,7 @@ python scripts/benchmark_eval.py \
 sleep 30
 
 # 性能测试
-python scripts/benchmark_eval.py \
+python src/benchmark_eval.py \
     --model Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4 \
     --perf-test \
     --base-url http://localhost:8000 \
@@ -470,7 +470,7 @@ llm-deploy/
 │   ├── docker-compose.yml      # 多服务编排
 │   ├── entrypoint.sh           # 容器入口脚本 (环境检查)
 │   └── v100-deploy.sh          # V100 一键部署脚本 ★
-├── scripts/
+├── src/
 │   ├── quantize_model.py       # 量化脚本 (V100: GPTQ/BitsAndBytes/W8A8)
 │   ├── deploy_server.py        # 通用部署脚本
 │   └── benchmark_eval.py       # 评测脚本
@@ -519,5 +519,5 @@ docker exec -it vllm-v100 bash
 ./v100-deploy.sh qwen2.5-vl-7b           # 图文理解
 
 # ========== 评测 ==========
-python scripts/benchmark_eval.py --model <MODEL> --tasks gsm8k,hellaswag --output /app/results/
+python src/benchmark_eval.py --model <MODEL> --tasks gsm8k,hellaswag --output /app/results/
 ```

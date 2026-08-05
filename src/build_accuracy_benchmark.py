@@ -13,13 +13,13 @@
 
 用法:
     # 默认: 自动发现所有数据源, 构建 200 条
-    python scripts/build_accuracy_benchmark.py
+    python src/build_accuracy_benchmark.py
 
     # 指定样本数
-    python scripts/build_accuracy_benchmark.py --num-samples 500
+    python src/build_accuracy_benchmark.py --num-samples 500
 
     # 列出可用数据源
-    python scripts/build_accuracy_benchmark.py --list-sources
+    python src/build_accuracy_benchmark.py --list-sources
 """
 
 import argparse

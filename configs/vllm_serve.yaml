@@ -1,5 +1,5 @@
 # vLLM 服务默认配置
-# 用法: python scripts/deploy_server.py --model <MODEL> --config configs/vllm_serve.yaml
+# 用法: python src/deploy_server.py --model <MODEL> --config configs/vllm_serve.yaml
 
 # 通用推理优化参数
 gpu-memory-utilization: 0.9
