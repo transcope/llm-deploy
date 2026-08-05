@@ -1,0 +1,24 @@
+# BitsAndBytes NF4 动态量化配置
+# 适配: 所有 NVIDIA GPU (包括 V100)
+# 效果: ~75% 显存节省 (动态)
+# 优势: 无需预量化, 即开即用, 兼容性最好
+
+quantization:
+  method: bitsandbytes
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "float16"
+  bnb_4bit_quant_type: "nf4"      # Normal Float 4
+  bnb_4bit_use_double_quant: true  # 嵌套量化
+
+# 注意: BitsAndBytes 不需要预量化步骤
+# 直接在 vLLM 中加载原始模型并启用动态量化
+
+vllm_deploy:
+  quantization: "bitsandbytes"
+  dtype: "float16"
+  load_format: "auto"
+  gpu_memory_utilization: 0.90
+  max_model_len: 32768
+  trust_remote_code: true
+  # 首次加载时会自动进行 NF4 量化 (较慢)
+  # 后续从缓存加载会快很多

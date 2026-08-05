@@ -1,0 +1,22 @@
+# AWQ INT4 量化配置
+# 适用于: 通用 GPU (Ampere/Ada/Hopper)
+# 效果: 75% 显存节省, ~95% 精度保留
+
+quantization:
+  method: awq
+  w_bit: 4
+  q_group_size: 128
+  zero_point: true
+  version: GEMM
+  targets: ["Linear"]
+  ignore: ["lm_head"]
+
+calibration:
+  num_samples: 128
+  dataset: "neuralmagic/LLM_compression_calibration"
+  format: "chat_template"
+
+output:
+  format: "huggingface"
+  shard_size: "4GB"
+  safetensors: true

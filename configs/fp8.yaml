@@ -1,0 +1,26 @@
+# FP8 量化配置
+# 适用于: Hopper+ GPU (H100/H200/B200)
+# 效果: 50% 显存节省, ~99% 精度保留
+
+quantization:
+  method: fp8
+  scheme: "FP8_DYNAMIC"  # 或 FP8_BLOCK
+  targets: ["Linear"]
+  ignore: ["lm_head"]
+  # FP8 格式选择: e4m3 (精度优先) / e5m2 (范围优先)
+  weight_format: "e4m3"
+  activation_format: "e4m3"
+
+calibration:
+  # FP8_DYNAMIC 无需校准
+  # FP8_BLOCK 需要校准
+  num_samples: 128
+  dataset: "neuralmagic/LLM_compression_calibration"
+
+kv_cache:
+  quantize: true
+  dtype: "fp8_e5m2"  # KV Cache 也量化为 FP8
+
+output:
+  format: "huggingface"
+  safetensors: true

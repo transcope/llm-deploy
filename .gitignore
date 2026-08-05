@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environment
+vllm-env/
+
+# Project runtime directories
+models/
+results/
+cache/
+logs/
+data/
+bak/
+
+# ZCode workspace
+.zcode/
+
+# macOS
+.DS_Store
+
+# Model artifacts
+*.safetensors
+*.bin
+*.pt
+*.pth

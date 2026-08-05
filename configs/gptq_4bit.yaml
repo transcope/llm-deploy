@@ -1,0 +1,34 @@
+# GPTQ INT4 量化配置 (V100 推荐方案)
+# 适配: NVIDIA V100 (Volta, SM 7.0) 及所有 CUDA GPU
+# 效果: 75% 显存节省, ~90% 精度保留
+# 优势: EXL2 kernel 支持 SM 70+, V100 完全兼容
+
+quantization:
+  method: gptq
+  bits: 4
+  group_size: 128
+  desc_act: true          # 激活排序, 提升精度
+  static_groups: false
+  sym: true               # 对称量化
+  true_sequential: true
+
+calibration:
+  num_samples: 128
+  dataset: "neuralmagic/LLM_compression_calibration"
+  format: "chat_template"
+  # 或使用自定义校准数据
+  # custom_data: "/path/to/calibration_data.jsonl"
+
+output:
+  format: "huggingface"
+  safetensors: true
+  shard_size: "4GB"
+
+# V100 部署时使用的 vLLM 参数
+vllm_deploy:
+  quantization: "gptq"
+  dtype: "float16"        # V100 不支持 bfloat16
+  gpu_memory_utilization: 0.90
+  max_model_len: 32768
+  trust_remote_code: true
+  enable_prefix_caching: true

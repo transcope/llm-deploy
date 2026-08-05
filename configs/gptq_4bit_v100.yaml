@@ -1,0 +1,52 @@
+# GPTQ W4A16 量化配置 (V100 推荐方案, llmcompressor 后端)
+# 适配: NVIDIA V100 (Volta, SM 7.0) 及所有 CUDA GPU
+# 效果: 75% 显存节省, ~90% 精度保留
+# 优势:
+#   - llmcompressor GPTQModifier 对 Qwen3 等新架构支持优于 gptqmodel 2.0
+#   - 产出 compressed-tensors 格式, vLLM 原生支持, V100 兼容
+#   - 权重 INT4 / 激活 FP16 (W4A16), 加速推理同时省显存
+#
+# 部署: deploy_server.py --model <output> --quantization compressed-tensors --dtype float16
+# 回退到 gptqmodel 后端: 把 gptq_backend 改为 gptqmodel (需 configs/gptq_4bit.yaml 的参数)
+
+quantization:
+  method: gptq
+  gptq_backend: llmcompressor   # llmcompressor (默认/推荐) | gptqmodel (回退)
+  scheme: "W4A16"               # 权重 INT4 group=128 对称, 激活不量化 (FP16)
+  targets: ["Linear"]
+  ignore: ["lm_head"]
+  block_size: 128               # GPTQ 单次压缩列数
+  dampening_frac: 0.01          # Hessian 阻尼, 防止数值不稳定
+  # Qwen3 会触发 "fails layer-wise assumptions" 自动降级到 basic pipeline,
+  # basic pipeline 下 Hessian 累积在 GPU 上会放大数值误差 (实测 error 随层炸到 6e5),
+  # 必须 offload_hessians=True 把 Hessian 移到 CPU, 用显存换精度
+  offload_hessians: true
+  # 阻止 oneshot 末尾自动推断 sparsity_config 写入 config.json,
+  # 否则 vLLM 加载时会按稀疏模型处理, 偏离 W4A16 量化语义
+  skip_compression_stats: true
+
+calibration:
+  # 128 样本足以覆盖常见 token 分布, 又不会让校准阶段耗时过长
+  # 实测 4 samples 校准在 deep layer 出现 6e5 量级 error, 必须 >= 64
+  num_samples: 128
+  dataset: "neuralmagic/LLM_compression_calibration"
+  format: "chat_template"
+  # HF 镜像与缓存 (容器内必需, 宿主机可省略)
+  hf_endpoint: "https://hf-mirror.com"
+  hf_cache: "/volume/hf_cache"
+  hf_offline: true          # 数据已预下载, 强制离线避免访问 huggingface.co 超时
+
+output:
+  format: "huggingface"
+  safetensors: true
+  shard_size: "4GB"
+
+# V100 部署时使用的 vLLM 参数
+# 注意: llmcompressor 产出的模型 quant_method 是 compressed-tensors, 不是 gptq
+vllm_deploy:
+  quantization: "compressed-tensors"
+  dtype: "float16"        # V100 不支持 bfloat16
+  gpu_memory_utilization: 0.90
+  max_model_len: 32768
+  trust_remote_code: true
+  enable_prefix_caching: true

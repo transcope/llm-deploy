@@ -1,0 +1,28 @@
+# SmoothQuant W8A8 量化配置
+# 适配: 所有 NVIDIA GPU (包括 V100)
+# 效果: 50% 显存节省, ~96% 精度保留
+# 优势: 精度损失最小, 适合对质量敏感的场景
+
+quantization:
+  method: smoothquant
+  smoothing_strength: 0.8    # SmoothQuant 平滑系数
+  targets: ["Linear"]
+  scheme: "W8A8"             # 权重8-bit, 激活8-bit
+  ignore: ["lm_head"]
+
+calibration:
+  num_samples: 128
+  dataset: "neuralmagic/LLM_compression_calibration"
+  format: "chat_template"
+
+output:
+  format: "huggingface"
+  safetensors: true
+
+# V100 部署参数
+vllm_deploy:
+  quantization: "compressed-tensors"
+  dtype: "float16"
+  gpu_memory_utilization: 0.90
+  max_model_len: 32768
+  trust_remote_code: true

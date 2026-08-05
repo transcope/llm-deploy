@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -e
+
+# 大模型推理压缩与本地化部署项目一键初始化脚本
+# 用法: ./init
+
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR="${PROJECT_ROOT}/vllm-env"
+CONTAINER_VENV="/app/venv"
+
+echo "=========================================="
+echo "初始化 llm-deploy 项目环境"
+echo "=========================================="
+
+# 检测运行环境: 容器内镜像已内置 /app/venv; 本地开发则创建项目级 vllm-env
+if [ -d "${CONTAINER_VENV}" ]; then
+    # ---- 容器环境: 复用镜像内置 venv, 跳过依赖安装 ----
+    echo "检测到容器环境 (复用 ${CONTAINER_VENV})"
+    source "${CONTAINER_VENV}/bin/activate"
+    echo "跳过依赖安装 (镜像已内置); 如需补装可手动: pip install -r requirements.txt"
+else
+    # ---- 本地开发: 创建项目级虚拟环境并安装依赖 ----
+    # 1. 创建虚拟环境
+    if [ ! -d "${VENV_DIR}" ]; then
+        echo "[1/4] 创建虚拟环境: ${VENV_DIR}"
+        python3 -m venv "${VENV_DIR}"
+    else
+        echo "[1/4] 虚拟环境已存在: ${VENV_DIR}"
+    fi
+
+    # 2. 升级 pip
+    PIP="${VENV_DIR}/bin/pip"
+    echo "[2/4] 升级 pip..."
+    "${PIP}" install --upgrade pip setuptools wheel
+
+    # 4. 安装依赖
+    echo "[4/4] 安装项目依赖..."
+    if ! "${PIP}" install -r "${PROJECT_ROOT}/requirements.txt"; then
+        echo ""
+        echo "警告: 完整 GPU 依赖在本地安装失败（常见于 macOS / Python 3.13 / 无 CUDA）。"
+        echo "      将回退安装开发依赖，以保证代码和测试可在本地运行。"
+        echo "      服务器部署时请使用 CUDA 环境重新执行: pip install -r requirements.txt"
+        echo ""
+        "${PIP}" install -r "${PROJECT_ROOT}/requirements-dev.txt"
+    fi
+fi
+
+# 3. 创建工作目录 (本地与容器均需要)
+echo "[3/4] 创建工作目录..."
+mkdir -p "${PROJECT_ROOT}/models"
+mkdir -p "${PROJECT_ROOT}/results"
+mkdir -p "${PROJECT_ROOT}/cache"
+mkdir -p "${PROJECT_ROOT}/logs"
+
+# 5. 验证
+echo ""
+echo "=========================================="
+echo "初始化完成"
+echo "=========================================="
+if [ -d "${CONTAINER_VENV}" ]; then
+    echo "虚拟环境: ${CONTAINER_VENV} (容器内置)"
+    echo "运行测试: ./run_tests.sh"
+else
+    echo "虚拟环境: ${VENV_DIR}"
+    echo "激活命令: source ${VENV_DIR}/bin/activate"
+    echo "运行测试: source ${VENV_DIR}/bin/activate && ./run_tests.sh"
+fi
+echo ""
+echo "服务器如需在容器内补装依赖:"
+echo "  pip install -r requirements.txt"
