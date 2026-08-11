@@ -50,6 +50,29 @@
 
 ## 2. 快速启动 (Docker)
 
+> **从零恢复**：若 `/volume/workspace/llm-deploy/` 已被清空，需先恢复项目代码再进行后续操作。
+> 详见 [FROM_SCRATCH_RUNBOOK.md 步骤 2](FROM_SCRATCH_RUNBOOK.md#2-恢复项目代码)。
+> 物理服务器（非 Docker）的双 venv 重建见 [V100_SERVER_GUIDE.md 3.4 节](V100_SERVER_GUIDE.md#34-从零重建)。
+
+### 2.0 前置依赖
+
+从零执行量化前，需确认以下保留项存在：
+
+| 保留项 | 路径 | 用途 | 清空时是否保留 |
+|--------|------|------|:--------------:|
+| 原始模型 | `/app/local_models/Mind-SLLM-Qwen3-8B` | 量化输入 | ✅ 保留 |
+| HF 缓存 | `/volume/hf_cache` | 离线校准数据回退 | ✅ 保留 |
+| 既有量化模型 | `/volume/models/` | 复用已量化模型 | ✅ 保留 |
+| 项目代码 | `/volume/workspace/llm-deploy/` | 脚本 + 配置 | ❌ 需恢复 |
+| 量化环境 | `/app/venv-quant/` | gptqmodel 工具链 | ❌ 需重建 |
+| 部署环境 | `/app/venv-deploy/` | vLLM 推理 | ❌ 需重建 |
+| 领域数据 | `data/custom_data/` | 校准数据源 | ❌ 需恢复 |
+
+> ⚠️ **HF 缓存依赖**：`configs/gptq_4bit_v100_gptqmodel.yaml` 中 `hf_offline: true` 依赖
+> `/volume/hf_cache` 预下载缓存。当 `custom_data` 不可用时，`get_calibration_texts()` 回退到
+> `neuralmagic/LLM_compression_calibration` 数据集，需从此缓存加载。清空项目目录不影响此缓存
+> （位于 `/volume/` 下而非项目目录内），但重建环境后需确认缓存路径正确。
+
 ### 2.1 构建镜像
 
 ```bash
@@ -276,6 +299,57 @@ vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ \
 
 ---
 
+## 4.5 V100 + Qwen3 部署方案（实际验证）
+
+> ⚠️ **vLLM 0.7.1 不支持 Qwen3 架构**：报错
+> `Model architectures ['Qwen3ForCausalLM'] are not supported for now`，无法用 vLLM 部署 Qwen3 模型。
+> 且 transformers 4.51.0 无法加载 gptqmodel 2.0.0 的 GPTQ 模型（要求 gptqmodel>=7.0.0）。
+
+**实际可用方案**：用 **gptqmodel + TORCH backend** 部署（纯 torch 实现，V100 最兼容）。
+使用项目提供的 `serve_gptq.py` 脚本（OpenAI 兼容 API）。
+
+**方式一：直接运行 serve_gptq.py**
+
+```bash
+# 启动服务（后台）
+docker exec -d zetta_ld bash -c 'nohup /app/venv-deploy/bin/python /volume/workspace/llm-deploy/serve_gptq.py \
+    --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
+    --host 0.0.0.0 --port 8000 > /tmp/serve.log 2>&1 &'
+
+# 验证
+curl http://localhost:8000/v1/models
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" --data @/tmp/test_chat.json
+```
+
+**方式二：通过 v100-deploy.sh 一键部署（推荐）**
+
+```bash
+# 用 gptqmodel + TORCH backend 部署 Qwen3 (V100 兼容)
+./v100-deploy.sh qwen3-8b --gptqmodel
+
+# 指定本地量化模型路径
+./v100-deploy.sh /volume/models/Mind-SLLM-Qwen3-8B-GPTQ --gptqmodel --port 8000
+```
+
+> `v100-deploy.sh` 已支持 `--gptqmodel` 选项，内部调用 `serve_gptq.py` 部署。
+> 注意：`qwen3-*` 预设的 `MODEL_ID` 是 HuggingFace ID，若用本地量化模型需直接传路径。
+
+**serve_gptq.py 关键逻辑**：
+1. 调用 `install_qwen3_gptq_adapter()` 注入 Qwen3 支持（gptqmodel 2.0.0 默认不识别 qwen3）
+2. 用 `GPTQModel.from_quantized(..., backend=BACKEND.TORCH)` 加载（TORCH backend 兼容 V100）
+3. 提供 `/v1/models`、`/v1/chat/completions`、`/health` 接口
+
+**为什么不用其他 backend**：
+- **ExllamaV2**：需 SM 8.0+（A100），V100（SM 7.0）报 `no kernel image is available`
+- **ExllamaV1**：V100 可加载，但加载后 CUDA context 被污染，后续操作报错
+- **TORCH**：纯 torch 实现，无自定义 CUDA kernel，**兼容性最好**（速度较慢但功能正常）
+
+> 若需更高性能，可升级 vLLM 到支持 Qwen3 的版本（如 0.8.x），但需同时解决 compressed-tensors 冲突
+> （vllm 0.8.x 要求 0.9.2，与 llmcompressor 0.4.0 的 0.9.0 冲突）。
+
+---
+
 ## 5. vLLM 在 V100 上的最佳配置
 
 ### 5.1 环境变量 (必需)
@@ -470,10 +544,22 @@ llm-deploy/
 │   ├── docker-compose.yml      # 多服务编排
 │   ├── entrypoint.sh           # 容器入口脚本 (环境检查)
 │   └── v100-deploy.sh          # V100 一键部署脚本 ★
-├── src/
+├── src/                        # Python 核心代码
 │   ├── quantize_model.py       # 量化脚本 (V100: GPTQ/BitsAndBytes/W8A8)
 │   ├── deploy_server.py        # 通用部署脚本
-│   └── benchmark_eval.py       # 评测脚本
+│   ├── benchmark_eval.py       # lm-eval 精度评测 + 性能测试
+│   ├── benchmark_domain.py     # 领域精度评测 (API 模式)
+│   ├── build_accuracy_benchmark.py  # 精度评测 Benchmark 数据集构建
+│   ├── build_calibration_data.py    # 校准数据集构建
+│   ├── validate_calibration.py      # PPL 验证
+│   ├── hf_download.py              # HuggingFace 模型/数据下载
+│   ├── qwen3_gptq_adapter.py       # Qwen3 GPTQ 适配器 (自动注入)
+│   └── qwen3_pipeline_patch.py     # Qwen3 pipeline patch
+├── cases/                      # 执行脚本
+│   └── v100/
+│       ├── install_quant_tools.sh   # 量化工具链安装 (Dockerfile 调用)
+│       ├── activate_quant.sh        # 激活量化环境 (物理服务器双 venv)
+│       └── activate_deploy.sh       # 激活部署环境
 ├── configs/
 │   ├── gptq_4bit.yaml                   # GPTQ 基础配置 (通用)
 │   ├── gptq_4bit_v100.yaml              # GPTQ V100 (llmcompressor 后端, A100+ 部署)
@@ -482,11 +568,16 @@ llm-deploy/
 ├── models/                     # 模型存放 (挂载卷)
 ├── results/                    # 评测结果 (挂载卷)
 ├── cache/                      # HuggingFace 缓存 (挂载卷)
+├── bak/v0/                     # 归档的旧版本文档
+│   ├── solution_report.md      # 通用方案报告 (v0 存档)
+│   └── QUANTIZATION_ISSUES_LOG.md  # 量化问题日志 (v0 存档)
 └── docs/
     ├── V100_DEPLOY_GUIDE.md    # 本文件
     ├── USAGE_GUIDE.md          # 使用与适配总览
     ├── CALIBRATION_GUIDE.md    # 校准数据指南
-    └── solution_report.md      # 通用方案报告
+    ├── EVALUATION_PROTOCOL.md  # 评估协议
+    ├── GPU_ARCHITECTURE_GUIDE.md  # GPU 架构兼容性
+    └── A100_DEPLOY_GUIDE.md    # A100 部署指南
 ```
 
 ---

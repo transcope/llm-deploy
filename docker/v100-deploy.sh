@@ -106,6 +106,7 @@ show_help() {
   --awq                    强制使用 AWQ 量化 (如果可用)
   --gptq                   强制使用 GPTQ 量化
   --bnb                    使用 BitsAndBytes NF4 动态量化
+  --gptqmodel              用 gptqmodel + TORCH backend 部署 (支持 Qwen3, V100 兼容)
   -d, --dry-run            仅打印命令, 不执行
   --no-prefix-cache        禁用前缀缓存
   -h, --help               显示此帮助
@@ -117,11 +118,16 @@ V100 架构限制:
   ❌ 不支持 bfloat16 (本脚本统一使用 float16)
   ✅ 推荐: GPTQ INT4 / BitsAndBytes NF4 / 原始 FP16
 
+Qwen3 部署注意:
+  ⚠️ vLLM 0.7.1 不支持 Qwen3 架构 (报错: Model architectures ['Qwen3ForCausalLM'] are not supported)
+  ⚠️ 部署 Qwen3 需用 --gptqmodel 选项 (gptqmodel + TORCH backend, V100 兼容)
+
 示例:
   ./v100-deploy.sh qwen2.5-7b-awq                    # 部署 7B AWQ
   ./v100-deploy.sh deepseek-r1-14b --port 8080       # 部署 14B, 端口8080
   ./v100-deploy.sh qwen2.5-32b --tp 4                # 4卡部署 32B
   ./v100-deploy.sh qwen2.5-7b --bnb --dry-run        # 查看 NF4 部署命令
+  ./v100-deploy.sh qwen3-8b --gptqmodel              # 用 gptqmodel 部署 Qwen3 (V100 兼容)
 
 EOF
 }
@@ -232,6 +238,7 @@ main() {
     DRY_RUN=false
     FORCE_QUANT=""
     DEVICES=""
+    USE_GPTQMODEL=false
 
     # 检查参数
     if [[ $# -eq 0 ]]; then
@@ -281,6 +288,10 @@ main() {
                 ;;
             --bnb)
                 FORCE_QUANT="bitsandbytes"
+                shift
+                ;;
+            --gptqmodel)
+                USE_GPTQMODEL=true
                 shift
                 ;;
             -d|--dry-run)
@@ -389,12 +400,34 @@ main() {
     echo ""
 
     # 启动服务
-    echo -e "${GREEN}正在启动 vLLM 服务...${NC}"
-    echo -e "${CYAN}服务地址: http://0.0.0.0:${PORT}${NC}"
-    echo -e "${CYAN}API 文档: http://0.0.0.0:${PORT}/docs${NC}"
-    echo ""
-
-    eval "$CMD"
+    if [[ "$USE_GPTQMODEL" == "true" ]]; then
+        # gptqmodel + TORCH backend 部署 (支持 Qwen3, V100 兼容)
+        # 注意: vLLM 0.7.1 不支持 Qwen3 架构, 需用 gptqmodel 部署
+        echo -e "${GREEN}正在启动 gptqmodel 服务 (TORCH backend, 支持 Qwen3)...${NC}"
+        echo -e "${CYAN}服务地址: http://0.0.0.0:${PORT}${NC}"
+        echo ""
+        echo -e "${YELLOW}使用 serve_gptq.py 部署 (OpenAI 兼容 API)${NC}"
+        echo -e "${YELLOW}  python serve_gptq.py --model $MODEL_ID --host 0.0.0.0 --port $PORT${NC}"
+        echo ""
+        # 检查 serve_gptq.py 是否存在
+        if [[ -f "/volume/workspace/llm-deploy/serve_gptq.py" ]]; then
+            exec /app/venv-deploy/bin/python /volume/workspace/llm-deploy/serve_gptq.py \
+                --model "$MODEL_ID" --host 0.0.0.0 --port "$PORT"
+        elif [[ -f "serve_gptq.py" ]]; then
+            exec /app/venv-deploy/bin/python serve_gptq.py \
+                --model "$MODEL_ID" --host 0.0.0.0 --port "$PORT"
+        else
+            echo -e "${RED}错误: 未找到 serve_gptq.py, 请先将其复制到项目目录${NC}"
+            exit 1
+        fi
+    else
+        # vLLM 部署
+        echo -e "${GREEN}正在启动 vLLM 服务...${NC}"
+        echo -e "${CYAN}服务地址: http://0.0.0.0:${PORT}${NC}"
+        echo -e "${CYAN}API 文档: http://0.0.0.0:${PORT}/docs${NC}"
+        echo ""
+        eval "$CMD"
+    fi
 }
 
 main "$@"

@@ -357,6 +357,10 @@ python src/validate_calibration.py \
 
 `custom_data` 字段已在 `quantize_model.py` 的 `get_calibration_texts()` 中实现（来源 0，最高优先级）。以下介绍如何准备和配置自定义校准数据。
 
+> ⚠️ **从零恢复注意**：`data/custom_data/` 在 `.gitignore` 中，清空项目目录后 10 个领域数据源
+> （telecom_exam、comm_qa_selfinst2、math 等）全部丢失。从零执行量化前必须先恢复领域数据，
+> 详见 [7.7 节](#77-从零恢复领域数据) 和 [FROM_SCRATCH_RUNBOOK.md 步骤 4](FROM_SCRATCH_RUNBOOK.md#4-准备校准数据)。
+
 ### 7.1 数据格式要求
 
 JSONL 文件（每行一个 JSON 对象），支持两种字段结构：
@@ -520,6 +524,96 @@ calibration:
 ```
 
 > **注意**：v2 过滤掉了 26 条 Agent 多轮对话（全部超长样本），如果下游任务高度依赖 Agent 场景，应考虑改用 memory-efficient SDPA 后端（不修改方案逻辑，仅强制 PyTorch 后端选择）以支持长序列校准。
+
+### 7.7 从零恢复领域数据
+
+> 当 `/volume/workspace/llm-deploy/` 被清空时，`data/custom_data/` 下的 10 个领域数据源全部丢失
+> （该目录在 `.gitignore` 中，不随项目代码同步）。从零执行量化前必须先恢复领域数据。
+
+#### 7.7.1 数据源清单
+
+`build_calibration_data.py` 依赖以下 10 个数据源（位于 `data/custom_data/`）：
+
+| 数据源 | 权重 | 格式类型 | 领域 |
+|--------|------|----------|------|
+| `telecom_exam/` | 0.20 | Alpaca | 通信行业考试 |
+| `comm_qa_selfinst2/` | 0.15 | messages | 通信 QA 自指令 |
+| `math/` | 0.15 | 原始格式 | 数学 |
+| `comm_qa_selfinst1/` | 0.10 | messages | 通信 QA 自指令 |
+| `agent_sft/` | 0.10 | tasks | Agent SFT |
+| `comm_qa_seed/` | 0.10 | messages | 通信 QA |
+| `spec_exam/` | 0.05 | Alpaca | 专项考试 |
+| `agent_general/` | 0.05 | tasks | Agent 通用 |
+| `agent_iridium/` | 0.05 | messages | Agent Iridium 数据 |
+| `codegen/` | 0.05 | codegen | 代码生成 |
+
+#### 7.7.2 恢复方式
+
+**方式 A：从本地备份上传（推荐，保证领域精度）**：
+
+```bash
+# 本地终端：上传 data/custom_data/ 到容器
+scp -r D:/project/opencode/llm-deploy/data/custom_data `
+    jiysh@192.168.192.186:/tmp/custom_data
+ssh jiysh@192.168.192.186
+docker cp /tmp/custom_data zetta_ld:/volume/workspace/llm-deploy/data/custom_data
+rm -rf /tmp/custom_data
+```
+
+**验证数据源完整**：
+
+```bash
+cd /volume/workspace/llm-deploy
+source /app/venv-quant/bin/activate
+python src/build_calibration_data.py --list-sources
+# 应列出全部 10 个数据源
+```
+
+**方式 B：无本地备份时退化为 HF 通用校准集**（精度偏离领域最优）：
+
+跳过领域数据恢复，在 YAML 配置中移除 `custom_data` 字段，让 `get_calibration_texts()` 回退到
+`neuralmagic/LLM_compression_calibration`（依赖 `/volume/hf_cache` 离线缓存）：
+
+```yaml
+calibration:
+  num_samples: 128
+  # custom_data: ...  ← 注释掉或删除此行
+  dataset: "neuralmagic/LLM_compression_calibration"
+  hf_endpoint: "https://hf-mirror.com"
+  hf_cache: "/volume/hf_cache"
+  hf_offline: true
+```
+
+> ⚠️ 退化为 HF 通用校准集后，量化模型在通信/数学/代码等领域的精度会偏离最优。
+> 生产环境强烈建议恢复领域数据（方式 A）。
+
+#### 7.7.3 v2 端到端生成链路
+
+从零生成 `calibration_data_v2.jsonl` 的完整链路：
+
+```
+data/custom_data/ (10 个数据源, 需恢复)
+        │
+        ▼
+build_calibration_data.py --num-samples 256
+        │
+        ▼
+data/calibration/calibration_data.jsonl  (v1, 256 条, 可能含超长样本)
+        │
+        ▼
+v2 过滤脚本 (tokenize + MAX_TOKENS=8192 过滤, 见 7.6 节)
+        │
+        ▼
+data/calibration/calibration_data_v2.jsonl  (v2, ~230 条, V100 安全)
+        │
+        ▼
+configs/gptq_4bit_v100_gptqmodel.yaml (custom_data 指向 v2)
+        │
+        ▼
+quantize_model.py (量化时加载 v2)
+```
+
+> 完整的从零执行流程见 [FROM_SCRATCH_RUNBOOK.md 步骤 4](FROM_SCRATCH_RUNBOOK.md#4-准备校准数据)。
 
 ---
 

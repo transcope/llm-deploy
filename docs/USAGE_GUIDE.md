@@ -7,6 +7,7 @@
 > - V100 专版见 [V100_DEPLOY_GUIDE.md](V100_DEPLOY_GUIDE.md)
 > - A100 专版见 [A100_DEPLOY_GUIDE.md](A100_DEPLOY_GUIDE.md)
 > - 跨硬件兼容性见 [GPU_ARCHITECTURE_GUIDE.md](GPU_ARCHITECTURE_GUIDE.md)
+> - 从零执行全链路见 [FROM_SCRATCH_RUNBOOK.md](FROM_SCRATCH_RUNBOOK.md)
 
 ---
 
@@ -244,6 +245,69 @@ python src/benchmark_eval.py \
 
 评测脚本会输出带 🟢🟡🟠🔴 标记的损失对比表。损失 > 5% 说明量化异常，检查校准样本数和方案配置。
 
+### 3.5 查看评测结果
+
+评测完成后，所有产出保存在 `--output` 指定目录：
+
+```bash
+# 精度评测 (benchmark_eval.py) 产出
+ls -la ./results/<方案名>/
+./results/<方案名>/
+├── baseline/                    # 基线模型评测结果
+│   └── results_<timestamp>.json     # lm-eval 原始结果 (含每任务分数)
+└── <方案名>/                        # 量化模型评测结果 (多个方案可并列)
+    └── results_<timestamp>.json
+```
+
+**精度损失对比表**（脚本 stdout 输出）示例：
+
+```
+===================================
+精度损失对比:
+===================================
+
+gptq:
+  gsm8k_acc: 基线=0.5840, 量化=0.5640, 损失=-3.42% 🟡
+  hellaswag_acc: 基线=0.6040, 量化=0.5960, 损失=-1.32% 🟡
+```
+
+| 标记 | 损失范围 | 含义 |
+|:----:|:--------:|:-----|
+| 🟢 | ≤ 1% | 优秀，精度几乎无损 |
+| 🟡 | 1% ~ 3% | 良好，可接受 |
+| 🟠 | 3% ~ 5% | 一般，需检查校准数据 |
+| 🔴 | > 5% | 异常，量化参数或校准数据有问题 |
+
+**领域精度评测 (benchmark_domain.py)** 产出示例：
+
+```bash
+./results/domain_eval.json       # JSON 报告，含 overall / per_source / 逐条 results
+```
+
+控制台输出示例：
+```
+============================================================
+评测完成
+  总体准确率: 68.75% (132/192)
+  平均得分:   0.6875
+  阈值:       pass >= 0.35
+
+  按来源:
+    alpaca               : acc=75.00%  avg_score=0.7500  (30/40)
+    codegen              : acc=65.62%  avg_score=0.6562  (42/64)
+    math                 : acc=68.18%  avg_score=0.6818  (60/88)
+```
+
+**快捷查看压缩比**（量化效果的另一指标）：
+
+```bash
+du -sh ./models/<原始模型>/      # 基线体积
+du -sh ./models/<量化模型>/       # 量化后体积
+# 压缩比 = 基线/量化后
+```
+
+> 评测结果 JSON 可导入数据分析工具做进一步对比，或跨方案汇总到 `./results/_summary/`。
+
 ---
 
 ## 4. 快速部署运行
@@ -347,6 +411,7 @@ print(c.chat.completions.create(model='Qwen2.5-7B-AWQ',
 
 ## 相关文档
 
+- [从零执行操作手册](FROM_SCRATCH_RUNBOOK.md) —— 清空环境后从零完成压缩→部署→评估全链路
 - [校准数据指南](CALIBRATION_GUIDE.md) —— 校准样本数、数据格式、离线校准、自定义校准集
 - [V100 部署指南](V100_DEPLOY_GUIDE.md) —— V100 专版（GPTQ 量化、显存调参、Docker）
 - [A100 部署指南](A100_DEPLOY_GUIDE.md) —— A100 单卡端到端（AWQ 量化、一键脚本）

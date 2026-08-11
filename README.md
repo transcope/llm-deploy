@@ -29,20 +29,15 @@ source vllm-env/bin/activate  # Linux/Mac
 `./init` 会自动尝试安装完整 GPU 依赖；若本地为 macOS / 无 CUDA / Python 版本不兼容，
 会回退安装 `requirements-dev.txt`，保证脚本和测试可在本地开发。
 
-服务器部署时，请根据任务选择对应虚拟环境（V100 容器内使用双虚拟环境隔离）：
+服务器部署时（Docker 容器内），所有任务使用同一基础环境：
 
 ```bash
-# 量化任务 → 量化环境 (含 gptqmodel 2.0.0)
-source /app/venv-quant/bin/activate
-	# 或 source cases/v100/activate_quant.sh
-
-	# 部署/评测任务 → 部署评测环境 (无 gptqmodel，避免版本冲突)
-	source /app/venv-deploy/bin/activate
-	# 或 source cases/v100/activate_deploy.sh
+# 激活容器基础环境（已含 torch + vLLM + 量化工具链）
+source /app/venv/bin/activate
 ```
 
-> 双虚拟环境设计解决 gptqmodel 2.0.0 与 optimum 的版本冲突（optimum 要求 gptqmodel≥7.0.0），
-> 量化与部署各自独立维护依赖。详见 [docs/V100_SERVER_GUIDE.md](docs/V100_SERVER_GUIDE.md) 第 3 节。
+> **物理 V100 服务器**（非 Docker）因 gptqmodel 2.0.0 与 optimum 版本冲突需使用双虚拟环境隔离，
+> 详见 [docs/V100_SERVER_GUIDE.md](docs/V100_SERVER_GUIDE.md) 第 3 节。Docker 用户无需关心。
 
 **硬件要求:**
 - NVIDIA GPU (计算能力 >= 7.0；V100 为 7.0，需使用 float16 + GPTQ，见 V100 指南)
@@ -326,6 +321,8 @@ docker exec -it vllm-v100 bash
 
 ## 文档导航
 
+- **[从零执行操作手册](docs/FROM_SCRATCH_RUNBOOK.md)** —— 清空环境后从零完成压缩→部署→评估全链路（8 步）
+- **[从零执行测试报告](docs/FROM_SCRATCH_TEST_REPORT.md)** —— 实际执行结果、精度对比、问题记录
 - **[使用指南](docs/USAGE_GUIDE.md)** —— 量化/评测/部署总览 + 按 GPU 选方案（推荐先读）
 - **[校准数据指南](docs/CALIBRATION_GUIDE.md)** —— 校准样本数、数据格式、离线校准
 - **[V100 服务器操作指南](docs/V100_SERVER_GUIDE.md)** —— SSH/Docker/双虚拟环境操作
