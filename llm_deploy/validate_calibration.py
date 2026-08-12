@@ -15,13 +15,13 @@ PPL 计算直接使用 transformers (AutoModelForCausalLM)，不依赖 lm-eval �
         --validate
 
     # 独立验证（模型已量化，补跑验证）
-    python src/validate_calibration.py \\
+    python llm_deploy/validate_calibration.py \\
         --baseline Qwen/Qwen2.5-7B-Instruct \\
         --quantized ./models/Qwen2.5-7B-GPTQ \\
         --quantization gptq
 
     # 指定验证文本（默认使用内置 200 条通用文本）
-    python src/validate_calibration.py \\
+    python llm_deploy/validate_calibration.py \\
         --baseline ... --quantized ... \\
         --val-data ./data/validation.jsonl \\
         --num-samples 100

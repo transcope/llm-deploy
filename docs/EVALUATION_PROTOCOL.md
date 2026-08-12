@@ -162,7 +162,7 @@ python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPU: {torch.
 
 ```bash
 # 从领域数据构建 100 条评估集（text 格式，供 PPL 验证使用）
-python src/build_calibration_data.py \
+python llm_deploy/build_calibration_data.py \
     --mode eval \
     --num-samples 100 \
     --seed 43
@@ -205,7 +205,7 @@ python src/build_calibration_data.py \
 
 ```bash
 # 从领域数据构建精度评测 Benchmark（格式，供 benchmark_domain.py 使用）
-python src/build_accuracy_benchmark.py \
+python llm_deploy/build_accuracy_benchmark.py \
     --num-samples 300 \
     --seed 44
 ```
@@ -288,7 +288,7 @@ Benchmark 从各个数据源提取 QA 对的逻辑：
 ### 5.2 执行命令
 
 ```bash
-python src/validate_calibration.py \
+python llm_deploy/validate_calibration.py \
     --baseline /app/local_models/Mind-SLLM-Qwen3-8B \
     --quantized /app/local_models/Mind-SLLM-Qwen3-8B \
     --num-samples 100 \
@@ -336,7 +336,7 @@ delta < 0.01 说明环境和数据集正常。
 
 ```bash
 # 方式 A：量化时自动验证（推荐）
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model /app/local_models/Mind-SLLM-Qwen3-8B \
     --method gptq \
     --config configs/gptq_4bit_v100_gptqmodel.yaml \
@@ -346,7 +346,7 @@ python src/quantize_model.py \
     --val-data ./data/evaluation/eval_data.jsonl
 
 # 方式 B：量化完成后单独验证
-python src/validate_calibration.py \
+python llm_deploy/validate_calibration.py \
     --baseline /app/local_models/Mind-SLLM-Qwen3-8B \
     --quantized ./models/Mind-SLLM-Qwen3-8B-GPTQ \
     --quantization gptq \
@@ -415,14 +415,14 @@ python src/validate_calibration.py \
 
 ```bash
 # 评测量化模型
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --base-url http://192.168.192.186:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --benchmark data/custom_data/accuracy_benchmark.jsonl \
     --output results/domain_eval_quantized.json
 
 # 评测基线模型（需另启一个服务实例）
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --base-url http://192.168.192.186:8001 \
     --model Mind-SLLM-Qwen3-8B \
     --benchmark data/custom_data/accuracy_benchmark.jsonl \
@@ -433,14 +433,14 @@ python src/benchmark_domain.py \
 
 ```bash
 # 直接加载模型评测（建议在容器内执行）
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --local \
     --model /app/local_models/Mind-SLLM-Qwen3-8B \
     --benchmark data/custom_data/accuracy_benchmark.jsonl \
     --output results/domain_baseline.json
 
 # 评测基线 + 量化模型对比
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --local \
     --model ./models/Mind-SLLM-Qwen3-8B-GPTQ \
     --quantization gptq \
@@ -533,13 +533,13 @@ python src/benchmark_domain.py \
 
 ```bash
 # 1. 评测基线模型
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --local \
     --model /app/local_models/Mind-SLLM-Qwen3-8B \
     --output results/domain_baseline.json
 
 # 2. 评测量化模型（需先量化）
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --local \
     --model ./models/Mind-SLLM-Qwen3-8B-GPTQ \
     --output results/domain_quantized.json
@@ -668,19 +668,19 @@ cd /volume/workspace/llm-deploy
 
 ```bash
 # PPL 评估集 (100 条)
-python src/build_calibration_data.py --mode eval --num-samples 100 --seed 43
+python llm_deploy/build_calibration_data.py --mode eval --num-samples 100 --seed 43
 
 # 精度评测 Benchmark (~300 条)
-python src/build_accuracy_benchmark.py --num-samples 300 --seed 44
+python llm_deploy/build_accuracy_benchmark.py --num-samples 300 --seed 44
 
 # 查看 Benchmark 数据源
-python src/build_accuracy_benchmark.py --list-sources
+python llm_deploy/build_accuracy_benchmark.py --list-sources
 ```
 
 ### 10.3 PPL 基线测量
 
 ```bash
-python src/validate_calibration.py \
+python llm_deploy/validate_calibration.py \
     --baseline /app/local_models/Mind-SLLM-Qwen3-8B \
     --quantized /app/local_models/Mind-SLLM-Qwen3-8B \
     --num-samples 100 \
@@ -694,7 +694,7 @@ python src/validate_calibration.py \
 
 ```bash
 # 方式 A：量化时自动验证
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model /app/local_models/Mind-SLLM-Qwen3-8B \
     --method gptq \
     --config configs/gptq_4bit_v100_gptqmodel.yaml \
@@ -703,7 +703,7 @@ python src/quantize_model.py \
     --max-ppl-delta 5.0
 
 # 方式 B：量化后单独验证
-python src/validate_calibration.py \
+python llm_deploy/validate_calibration.py \
     --baseline /app/local_models/Mind-SLLM-Qwen3-8B \
     --quantized ./models/Mind-SLLM-Qwen3-8B-GPTQ \
     --quantization gptq \
@@ -720,19 +720,19 @@ python src/validate_calibration.py \
 # ===== API 模式（服务已部署） =====
 
 # 评测量化模型
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --base-url http://192.168.192.186:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --output results/domain_quantized.json
 
 # 评测基线模型（需另启服务）
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --base-url http://192.168.192.186:8001 \
     --model Mind-SLLM-Qwen3-8B \
     --output results/domain_baseline.json
 
 # 快速验证（只测 20 条）
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --base-url http://192.168.192.186:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --num-samples 20 \
@@ -741,19 +741,19 @@ python src/benchmark_domain.py \
 # ===== 本地模式（直接加载模型） =====
 
 # 基线模型评测
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --local \
     --model /app/local_models/Mind-SLLM-Qwen3-8B \
     --output results/domain_baseline.json
 
 # 量化模型评测
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --local \
     --model ./models/Mind-SLLM-Qwen3-8B-GPTQ \
     --output results/domain_quantized.json
 
 # 使用多卡张量并行加速
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --local \
     --model /app/local_models/Mind-SLLM-Qwen3-8B \
     --tp 8 \
@@ -844,7 +844,7 @@ print(f'  状态:          {\"✅ 通过\" if q_dom[\"overall\"][\"accuracy\"] >
 # PPL 快速验证（5 条）
 head -5 ./data/evaluation/eval_data.jsonl > /tmp/quick_test.jsonl
 
-python src/validate_calibration.py \
+python llm_deploy/validate_calibration.py \
     --baseline /app/local_models/Mind-SLLM-Qwen3-8B \
     --quantized /app/local_models/Mind-SLLM-Qwen3-8B \
     --num-samples 5 \
@@ -855,7 +855,7 @@ python src/validate_calibration.py \
 # 领域精度快速验证（5 条，API 模式）
 head -5 ./data/evaluation/accuracy_benchmark.jsonl > /tmp/quick_acc.jsonl
 
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --base-url http://192.168.192.186:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --benchmark /tmp/quick_acc.jsonl \
@@ -878,7 +878,7 @@ print(f'第一行: {json.dumps(lines[0], ensure_ascii=False)[:200]}')
 "
 
 # 重新构建（如数据源有更新）
-python src/build_accuracy_benchmark.py --num-samples 300 --seed 44
+python llm_deploy/build_accuracy_benchmark.py --num-samples 300 --seed 44
 ```
 
 ---

@@ -1,0 +1,43 @@
+# =============================================================================
+# vLLM 0.8.5 部署评测环境 (vllm-venv) 依赖清单
+# =============================================================================
+# 用途：V100 上部署/评测 Qwen3 GPTQ 模型的最新落地方案。
+# 环境：/app/vllm-venv (python 3.12)，容器 zetta_ld，CUDA 12.6 (容器内 12.4)。
+#
+# 为什么用 vLLM 0.8.5 而不是 0.7.1：
+#   - vLLM 0.7.1 不支持 Qwen3 架构 (Qwen3ForCausalLM)
+#   - vLLM 0.8.5 支持 Qwen3 + CUDA 12.6 + V100 (V0 引擎 + XFORMERS)
+#
+# 关键版本锁定：
+#   - torch==2.6.0+cu124：必须用 cu124 版 (cu126 用新 ABI 导致 undefined symbol)
+#   - transformers==4.57.6：5.15.0 报 Qwen2Tokenizer 属性错误
+#   - VLLM_ATTENTION_BACKEND=XFORMERS：V100 不支持 Flash Attention
+#
+# 安装：
+#   python3.12 -m venv /app/vllm-venv
+#   source /app/vllm-venv/bin/activate
+#   pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+#   pip install torch==2.6.0 torchvision==0.25.0 torchaudio==2.6.0 \
+#       --index-url https://download.pytorch.org/whl/cu124
+#   pip install vllm==0.8.5
+#   pip install transformers==4.57.6
+#   pip install -r requirements-vllm085.txt
+# =============================================================================
+
+# ===== 基础框架 =====
+torch==2.6.0+cu124                 # PyTorch (cu124 版, 与 vLLM 0.8.5 ABI 兼容)
+torchvision==0.25.0
+torchaudio==2.6.0
+transformers==4.57.6               # 锁定 4.57.6 (5.15.0 不兼容 Qwen2Tokenizer)
+accelerate>=0.34.0
+xformers==0.0.28.post3             # V100 上替代 FlashAttention-2
+
+# ===== 推理引擎 =====
+vllm==0.8.5                        # 支持 Qwen3 + CUDA 12.6 + V100 (V0 引擎)
+
+# ===== 其他依赖 =====
+openai>=1.30.0                     # OpenAI API 客户端
+requests>=2.32.0
+pyyaml>=6.0
+numpy>=1.26.0,<2.0.0               # vllm 0.8.x 尚未支持 numpy 2.x
+tqdm>=4.66.0

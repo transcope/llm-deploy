@@ -48,9 +48,9 @@ quantize_model.py     deploy_server.py      benchmark_eval.py
 
 | 阶段 | 脚本 | 核心配置 | 产出 |
 |------|------|----------|------|
-| 量化 | `src/quantize_model.py` | `configs/<方案>.yaml` | `./models/<model>-<quant>/` |
-| 部署 | `src/deploy_server.py` | `configs/vllm_serve.yaml` | `http://localhost:8000` |
-| 评测 | `src/benchmark_eval.py` | （命令行参数） | `./results/` |
+| 量化 | `llm_deploy/quantize_model.py` | `configs/<方案>.yaml` | `./models/<model>-<quant>/` |
+| 部署 | `llm_deploy/deploy_server.py` | `configs/vllm_serve.yaml` | `http://localhost:8000` |
+| 评测 | `llm_deploy/benchmark_eval.py` | （命令行参数） | `./results/` |
 
 > A100 单卡可一键跑完「量化+精度评测」：`./examples/07_a100_deploy.sh all`（精度评测走 lm-eval 直连，无需先部署服务）。
 
@@ -95,21 +95,21 @@ quantize_model.py     deploy_server.py      benchmark_eval.py
 
 ```bash
 # 通用模板
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model <原始模型ID或路径> \
     --method <awq|gptq|fp8|w8a8> \
     --config configs/<方案>.yaml \
     --output ./models/<model>-<quant>
 
 # A100 推荐: AWQ
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method awq \
     --config configs/awq_4bit.yaml \
     --output ./models/Qwen2.5-7B-AWQ
 
 # V100 推荐: GPTQ (gptqmodel 后端, 标准 GPTQ 格式)
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --config configs/gptq_4bit_v100_gptqmodel.yaml \
@@ -161,7 +161,7 @@ du -sh ./models/<model>-<quant>/     # 量化后体积, 如 5.7G
 
 ```bash
 # 通用模板 - 精度评测 (独立进行, 无需先部署)
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model <量化模型路径> \
     --quantization <awq|gptq|fp8|compressed-tensors|bitsandbytes> \
     --dtype <float16|bfloat16> \
@@ -170,7 +170,7 @@ python src/benchmark_eval.py \
     --output ./results/<方案名>
 
 # 通用模板 - 性能测试 (必须先部署服务, 见第 4 节)
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model <量化模型路径> \
     --perf-test --skip-accuracy \
     --base-url http://localhost:8000 \
@@ -187,7 +187,7 @@ python src/benchmark_eval.py \
 用 lm-evaluation-harness 评测量化模型精度，并与基线模型对比损失：
 
 ```bash
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --quantization awq \
     --dtype bfloat16 \
@@ -218,7 +218,7 @@ python src/benchmark_eval.py \
 
 ```bash
 # 先在另一终端启动服务 (见第 4 节), 然后:
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --perf-test \
     --skip-accuracy \
@@ -318,7 +318,7 @@ du -sh ./models/<量化模型>/       # 量化后体积
 
 ```bash
 # 通用模板 - 用部署脚本
-python src/deploy_server.py \
+python llm_deploy/deploy_server.py \
     --model <量化模型路径> \
     --quantization <awq|gptq|fp8|compressed-tensors|bitsandbytes> \
     --dtype <float16|bfloat16> \
@@ -345,7 +345,7 @@ vllm serve <量化模型路径> \
 ### 4.2 用部署脚本
 
 ```bash
-python src/deploy_server.py \
+python llm_deploy/deploy_server.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --dtype bfloat16 \
     --gpu-util 0.9 \
@@ -394,6 +394,26 @@ print(c.chat.completions.create(model='Qwen2.5-7B-AWQ',
     messages=[{'role':'user','content':'用一句话解释量子计算'}]).choices[0].message.content)
 "
 ```
+
+### 4.5 V100 + Qwen3 专用部署（vLLM 0.8.5）
+
+> ⚠️ **vLLM 0.7.1 不支持 Qwen3**，V100 上部署 Qwen3 需用 **vLLM 0.8.5**（`vllm-venv`）。
+> 用 `llm_deploy/serve_vllm085.py`（`LLM()` 直接加载，规避 `vllm serve` 的 multiprocessing bug）。
+
+```bash
+# 部署 GPTQ 量化模型 (V100 生产推荐)
+source /app/vllm-venv/bin/activate
+python llm_deploy/serve_vllm085.py \
+    --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
+    --quantization gptq --port 8000 --gpu 0
+
+# 部署 FP16 原模型
+python llm_deploy/serve_vllm085.py \
+    --model /app/local_models/Mind-SLLM-Qwen3-8B --port 8000 --gpu 0
+```
+
+> V100 上 vLLM 0.8.5 推理速度约 **30 tok/s**，比 gptqmodel TORCH backend（2.6 tok/s）快约 **11.5 倍**。
+> 详细方案对比见 [V100_DEPLOY_GUIDE.md 4.5 节](V100_DEPLOY_GUIDE.md#45-v100--qwen3-部署方案实际验证)。
 
 ---
 

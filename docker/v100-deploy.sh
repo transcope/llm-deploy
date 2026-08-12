@@ -407,17 +407,17 @@ main() {
         echo -e "${CYAN}服务地址: http://0.0.0.0:${PORT}${NC}"
         echo ""
         echo -e "${YELLOW}使用 serve_gptq.py 部署 (OpenAI 兼容 API)${NC}"
-        echo -e "${YELLOW}  python serve_gptq.py --model $MODEL_ID --host 0.0.0.0 --port $PORT${NC}"
+        echo -e "${YELLOW}  python cases/v100/serve_gptq.py --model $MODEL_ID --host 0.0.0.0 --port $PORT${NC}"
         echo ""
         # 检查 serve_gptq.py 是否存在
-        if [[ -f "/volume/workspace/llm-deploy/serve_gptq.py" ]]; then
-            exec /app/venv-deploy/bin/python /volume/workspace/llm-deploy/serve_gptq.py \
+        if [[ -f "/volume/workspace/llm-deploy/cases/v100/serve_gptq.py" ]]; then
+            exec /app/venv-deploy/bin/python /volume/workspace/llm-deploy/cases/v100/serve_gptq.py \
                 --model "$MODEL_ID" --host 0.0.0.0 --port "$PORT"
-        elif [[ -f "serve_gptq.py" ]]; then
-            exec /app/venv-deploy/bin/python serve_gptq.py \
+        elif [[ -f "cases/v100/serve_gptq.py" ]]; then
+            exec /app/venv-deploy/bin/python cases/v100/serve_gptq.py \
                 --model "$MODEL_ID" --host 0.0.0.0 --port "$PORT"
         else
-            echo -e "${RED}错误: 未找到 serve_gptq.py, 请先将其复制到项目目录${NC}"
+            echo -e "${RED}错误: 未找到 cases/v100/serve_gptq.py, 请先将其复制到项目目录${NC}"
             exit 1
         fi
     else

@@ -9,15 +9,15 @@ HuggingFace 模型 / 数据集下载工具 (镜像加速)
 
 用法:
     # 下载校准数据集 (量化前预拉取)
-    python src/hf_download.py --dataset neuralmagic/LLM_compression_calibration \\
+    python llm_deploy/hf_download.py --dataset neuralmagic/LLM_compression_calibration \\
         --save_dir /volume/hf_cache
 
     # 下载模型
-    python src/hf_download.py --model Qwen/Qwen2.5-7B-Instruct \\
+    python llm_deploy/hf_download.py --model Qwen/Qwen2.5-7B-Instruct \\
         --save_dir /volume/models
 
     # 用官方站点 (不走镜像)
-    python src/hf_download.py --dataset <name> --save_dir <dir> --use_mirror False
+    python llm_deploy/hf_download.py --dataset <name> --save_dir <dir> --use_mirror False
 
 注: 改造自容器内 /volume/workspace/hf_download.py (作者 Xiaojian Yuan),
     精简为函数化实现, 增加校准数据集校验与缓存目录约定。

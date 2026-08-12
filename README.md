@@ -26,8 +26,8 @@ source vllm-env/bin/activate  # Linux/Mac
 # vllm-env\Scripts\activate  # Windows
 ```
 
-`./init` 会自动尝试安装完整 GPU 依赖；若本地为 macOS / 无 CUDA / Python 版本不兼容，
-会回退安装 `requirements-dev.txt`，保证脚本和测试可在本地开发。
+`./init` 会自动尝试安装部署评测环境依赖（`requirements-vllm085.txt`，vllm 0.8.5）；
+若本地为 macOS / 无 CUDA / Python 版本不兼容，会提示在服务器 CUDA 环境安装。
 
 服务器部署时（Docker 容器内），所有任务使用同一基础环境：
 
@@ -48,20 +48,20 @@ source /app/venv/bin/activate
 
 	```bash
 	# AWQ INT4 量化 (推荐，Ampere+ 通用GPU)
-	python src/quantize_model.py \
+	python llm_deploy/quantize_model.py \
 	    --model Qwen/Qwen2.5-7B-Instruct \
 	    --method awq \
 	    --output ./models/Qwen2.5-7B-AWQ
 
 	# GPTQ INT4 量化 (V100 推荐，EXL2 kernel 支持 SM 7.0)
-	python src/quantize_model.py \
+	python llm_deploy/quantize_model.py \
 	    --model Qwen/Qwen2.5-7B-Instruct \
 	    --method gptq \
 	    --config configs/gptq_4bit.yaml \
 	    --output ./models/Qwen2.5-7B-GPTQ
 
 	# W8A8 SmoothQuant 量化 (V100 可用，精度损失最小)
-	python src/quantize_model.py \
+	python llm_deploy/quantize_model.py \
 	    --model Qwen/Qwen2.5-7B-Instruct \
 	    --method w8a8 \
 	    --config configs/w8a8.yaml \
@@ -70,7 +70,7 @@ source /app/venv/bin/activate
 	# BitsAndBytes NF4 无需预量化，部署时加 --quantization bitsandbytes 即可
 
 	# FP8 量化 (H100/H200/B200，V100 不支持)
-	python src/quantize_model.py \
+	python llm_deploy/quantize_model.py \
 	    --model Qwen/Qwen2.5-7B-Instruct \
 	    --method fp8 \
 	    --output ./models/Qwen2.5-7B-FP8
@@ -84,7 +84,7 @@ source /app/venv/bin/activate
 
 ```bash
 # 单卡部署 AWQ 模型
-python src/deploy_server.py \
+python llm_deploy/deploy_server.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --quantization awq
 
@@ -96,6 +96,19 @@ vllm serve ./models/Qwen2.5-7B-AWQ \
 ```
 
 服务启动后，访问 http://localhost:8000 获取 OpenAI 兼容 API。
+
+**V100 + Qwen3 部署**（vLLM 0.8.5，`vllm-venv`）：
+
+```bash
+# vLLM 0.7.1 不支持 Qwen3，V100 上需用 vLLM 0.8.5
+source /app/vllm-venv/bin/activate
+python llm_deploy/serve_vllm085.py \
+    --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
+    --quantization gptq --port 8000 --gpu 0
+```
+
+> V100 上 vLLM 0.8.5 推理速度约 **30 tok/s**，比 gptqmodel TORCH backend（2.6 tok/s）快约 **11.5 倍**。
+> 详见 [docs/V100_DEPLOY_GUIDE.md](docs/V100_DEPLOY_GUIDE.md) 4.5 节。
 
 ### 4. 测试验证
 
@@ -116,22 +129,22 @@ vllm serve ./models/Qwen2.5-7B-AWQ \
 
 ```bash
 # 标准 Benchmark 精度评测 (GSM8K / HellaSwag 等)
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --quantization awq \
     --tasks gsm8k,hellaswag \
     --baseline-model Qwen/Qwen2.5-7B-Instruct
 
 # 领域精度评测 (从领域数据构建的 custom Benchmark)
-python src/benchmark_domain.py \
+python llm_deploy/benchmark_domain.py \
     --base-url http://localhost:8000 \
     --model Qwen2.5-7B-AWQ
 
 # 构建领域精度 Benchmark 数据集 (从 data/custom_data/ 自动提取)
-python src/build_accuracy_benchmark.py --num-samples 300
+python llm_deploy/build_accuracy_benchmark.py --num-samples 300
 
 # 性能测试 (需服务已启动)
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --perf-test \
     --num-prompts 100 \
@@ -155,10 +168,12 @@ python -m pytest tests/ -v
 
 ### 7. 完整使用示例
 
-`cases/` 目录提供了按硬件分类的服务器端到端命令：
+`cases/` 目录提供了按硬件分类的服务器端到端命令和应用例：
 
 ```bash
 cases/a100/07_a100_deploy.sh          # A100 单卡端到端 (量化→部署→评测) ★
+cases/v100/serve_gptq.py              # V100 回退部署服务 (gptqmodel TORCH backend)
+cases/v100/compare_models.py          # V100 回退对比评测 (原模型 vs 量化模型)
 ```
 
 > 完整使用方式（量化/评测/部署命令模板、按 GPU 选方案）见 [docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)
@@ -263,22 +278,26 @@ docker exec -it vllm-v100 bash
 		llm-deploy/
 		├── init                         # 一键初始化脚本
 		├── run_tests.sh                 # 测试入口
-		├── src/                         # Python 核心代码
+		├── llm_deploy/                         # Python 核心代码
 		│   ├── quantize_model.py       # 模型量化转换
 		│   ├── deploy_server.py        # vLLM 服务部署
+		│   ├── serve_vllm085.py        # vLLM 0.8.5 部署服务 (V100+Qwen3 推荐)
 		│   ├── benchmark_eval.py       # 评测与性能测试
-		│   ├── benchmark_domain.py     # 领域精度评测 (API/本地模式)
+		│   ├── benchmark_domain.py     # 领域精度评测 (API/本地模式, vllm 0.8.5)
 		│   ├── hf_download.py          # HuggingFace 模型下载
 		│   ├── qwen3_gptq_adapter.py   # Qwen3 GPTQ 适配器 (gptqmodel MODEL_MAP 注入)
 		│   ├── qwen3_pipeline_patch.py # Qwen3 llmcompressor pipeline 兼容补丁
 		│   ├── build_accuracy_benchmark.py  # 领域精度 Benchmark 构建
 		│   ├── build_calibration_data.py    # 校准/评估数据集构建
 		│   └── validate_calibration.py      # 量化后 PPL 验证
-		├── cases/                      # 执行脚本 (按硬件组织)
+		├── cases/                      # 执行脚本 + 应用例 (按硬件组织)
 		│   ├── v100/
 		│   │   ├── activate_quant.sh       # V100 量化环境快捷激活
-		│   │   ├── activate_deploy.sh      # V100 部署评测环境快捷激活
-		│   │   └── install_quant_tools.sh  # V100 量化工具链安装 (Dockerfile 调用)
+		│   │   ├── activate_vllm085.sh     # V100 部署评测环境快捷激活 (vllm 0.8.5)
+		│   │   ├── activate_deploy.sh      # V100 旧部署环境快捷激活 (vllm 0.7.1)
+		│   │   ├── install_quant_tools.sh  # V100 量化工具链安装 (Dockerfile 调用)
+		│   │   ├── serve_gptq.py           # V100 回退部署服务 (gptqmodel TORCH backend)
+		│   │   └── compare_models.py       # V100 回退对比评测 (原模型 vs 量化模型)
 		│   └── a100/
 		│       └── 07_a100_deploy.sh       # A100 单卡端到端 (量化→部署→评测)
 		├── configs/                     # 配置文件模板
@@ -310,10 +329,8 @@ docker exec -it vllm-v100 bash
 		├── results/                     # 评测结果 (gitignore)
 		├── cache/                       # HuggingFace 缓存 (gitignore)
 		├── logs/                        # 日志 (gitignore)
-		├── requirements.txt             # 完整 GPU 依赖
 		├── requirements-quant.txt       # 量化环境依赖快照
-		├── requirements-deploy.txt      # 部署评测环境依赖快照
-		├── requirements-dev.txt         # 开发/测试依赖
+		├── requirements-vllm085.txt     # 部署评测环境依赖快照 (vllm 0.8.5)
 		└── README.md                    # 本文件
 	```
 	└── README.md                    # 本文件
@@ -325,8 +342,8 @@ docker exec -it vllm-v100 bash
 - **[从零执行测试报告](docs/FROM_SCRATCH_TEST_REPORT.md)** —— 实际执行结果、精度对比、问题记录
 - **[使用指南](docs/USAGE_GUIDE.md)** —— 量化/评测/部署总览 + 按 GPU 选方案（推荐先读）
 - **[校准数据指南](docs/CALIBRATION_GUIDE.md)** —— 校准样本数、数据格式、离线校准
-- **[V100 服务器操作指南](docs/V100_SERVER_GUIDE.md)** —— SSH/Docker/双虚拟环境操作
-- **[V100 部署指南](docs/V100_DEPLOY_GUIDE.md)** —— V100 专版（GPTQ 双后端、显存调参、Docker）
+- **[V100 服务器操作指南](docs/V100_SERVER_GUIDE.md)** —— SSH/Docker/多虚拟环境操作（venv-quant + vllm-venv）
+- **[V100 部署指南](docs/V100_DEPLOY_GUIDE.md)** —— V100 专版（GPTQ 双后端、vLLM 0.8.5 部署、显存调参、Docker）
 - **[A100 部署指南](docs/A100_DEPLOY_GUIDE.md)** —— A100 单卡端到端（AWQ 量化、一键脚本）
 - **[GPU 架构兼容性指南](docs/GPU_ARCHITECTURE_GUIDE.md)** —— V100/A100/H100 跨硬件迁移
 
@@ -339,19 +356,18 @@ docker exec -it vllm-v100 bash
 | **GPTQ INT4** | 75% | ~90% | Turing+ | 兼容性优先 |
 | **W8A8 INT8** | 50% | ~96% | 通用 | 精度敏感场景 |
 
-## 实测精度损失（Mind-SLLM-Qwen3-8B, V100, GPTQ INT4）
+## 实测精度损失（Mind-SLLM-Qwen3-8B, V100, GPTQ INT4, vLLM 0.8.5）
 
-基于 **282 样本领域精度 Benchmark**（通信/数学/代码混合数据集）的实测对比：
+基于 **86 样本领域精度 Benchmark**（通信/数学/代码混合数据集）的实测对比（vLLM 0.8.5 本地评测）：
 
 | 指标 | 原模型 (FP16) | GPTQ 4-bit | **精度损失** |
 |------|:------------:|:----------:|:----------:|
-| **总体准确率** | **42.20%** | **41.13%** | **-1.07%** |
-| 通用问答 (alpaca) | 46.71% | 44.91% | -1.80% |
-| 代码生成 (codegen) | 1.64% | 1.64% | 0.00% |
-| 数学推理 (math) | 74.07% | 74.07% | 0.00% |
+| **总体准确率** | **43.02%** | **39.53%** | **-3.49%** |
 
-> GPTQ 4-bit 量化仅造成约 **1% 准确率下降**，模型体积从 **16 GB → 5.68 GB**（-65%），
-> 推理吞吐提升约 2 倍。完整评测数据见 `results/domain_eval_gptq.json` 和 `results/domain_baseline_full.json`。
+> GPTQ 4-bit 量化保留约 **92%** 基线精度（39.53/43.02），math 类任务无损失。
+> 模型体积从 **16 GB → 5.8 GB**（-63%），推理速度从 2.6 tok/s（TORCH backend）提升到
+> **30 tok/s**（vLLM 0.8.5，快 11.5 倍）。完整评测数据见 `results/vllm085/baseline.json` 和
+> `results/vllm085/gptq.json`。
 
 ## 相关资源
 

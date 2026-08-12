@@ -172,7 +172,7 @@ INT4 权重在加载时会被**反量化为 FP16** 进行计算（或直接用 I
 
 # ── V100 (SM 7.0) ────────────────────────────────────────────
 # 1. 量化（使用 GPTQ，V100 最优）
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --output ./models/Qwen2.5-7B-GPTQ
@@ -186,7 +186,7 @@ vllm serve ./models/Qwen2.5-7B-GPTQ \
 
 # ── A100 (SM 8.0) ────────────────────────────────────────────
 # 1. 量化（使用 AWQ，A100 GEMM kernel 更快）
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method awq \                 # ← A100 推荐 AWQ
     --output ./models/Qwen2.5-7B-AWQ
@@ -200,7 +200,7 @@ vllm serve ./models/Qwen2.5-7B-AWQ \
 
 # ── H100 (SM 9.0) ────────────────────────────────────────────
 # 1. 量化（使用 FP8，H100 独有优势）
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method fp8 \                 # ← H100 推荐 FP8
     --output ./models/Qwen2.5-7B-FP8
@@ -280,13 +280,13 @@ print("输出:", outputs[0].outputs[0].text)
 ```bash
 # Step 1: V100 上完成量化（开发/测试阶段）
 # 在 V100 服务器上执行
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --output ./models/Qwen2.5-7B-GPTQ
 
 # 评测验证
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model ./models/Qwen2.5-7B-GPTQ \
     --quantization gptq \
     --tasks gsm8k,hellaswag \
@@ -305,7 +305,7 @@ vllm serve /opt/models/Qwen2.5-7B-GPTQ \
 
 # ⚠️ 注意：虽然 GPTQ 在 A100 上完全可用，
 # 但如果追求极致性能，可以在 A100 上重新用 AWQ 量化：
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method awq \          # ← A100 上 AWQ GEMM 更快
     --output /opt/models/Qwen2.5-7B-AWQ

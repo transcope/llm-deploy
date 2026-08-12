@@ -10,7 +10,7 @@
   2. 之后对 layer 1..N-1, 每个 layer 独立按 batch 顺序调用, 不传 pe,
      hook 应该从 shared_cache 取出对应 batch_idx 的 pe 塞回去.
 """
-# 注意: src/ 路径由 tests/conftest.py 统一注入 sys.path, 此处不再硬编码
+# 注意: llm_deploy/ 路径由 tests/conftest.py 统一注入 sys.path, 此处不再硬编码
 
 import pytest
 import torch

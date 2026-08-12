@@ -113,7 +113,7 @@ nvidia-smi
 **等价手动命令**（脚本内部即调用此命令）：
 
 ```bash
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method awq \
     --config configs/awq_4bit.yaml \
@@ -159,7 +159,7 @@ PORT=9000 ./examples/07_a100_deploy.sh deploy ./models/Qwen2.5-7B-AWQ
 **等价手动命令**：
 
 ```bash
-python src/deploy_server.py \
+python llm_deploy/deploy_server.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --dtype bfloat16 \
     --gpu-util 0.90 \
@@ -198,7 +198,7 @@ python src/deploy_server.py \
 **等价手动命令**：
 
 ```bash
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --quantization awq \
     --dtype bfloat16 \
@@ -239,7 +239,7 @@ python src/benchmark_eval.py \
 **等价手动命令**：
 
 ```bash
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model ./models/Qwen2.5-7B-AWQ \
     --perf-test \
     --skip-accuracy \

@@ -17,20 +17,20 @@
 
 	用法:
 	    # 默认: 自动发现所有数据源, 产出 256 条校准集, 按默认配比混合
-	    python src/build_calibration_data.py
+	    python llm_deploy/build_calibration_data.py
 	
 	    # 产出 100 条评估数据集 (text 格式, 供 PPL 验证)
-	    python src/build_calibration_data.py --mode eval --num-samples 100
+	    python llm_deploy/build_calibration_data.py --mode eval --num-samples 100
 	
 	    # 自定义总样本数
-	    python src/build_calibration_data.py --num-samples 512
+	    python llm_deploy/build_calibration_data.py --num-samples 512
 	
 	    # 指定配比 (总比例应=1.0)
-	    python src/build_calibration_data.py \
+	    python llm_deploy/build_calibration_data.py \
 	        --weights "comm_qa:0.35,exam:0.35,agent:0.20,math:0.10"
 	
 	    # 列出可用数据源
-	    python src/build_calibration_data.py --list-sources
+	    python llm_deploy/build_calibration_data.py --list-sources
 """
 
 import argparse

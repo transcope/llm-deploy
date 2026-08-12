@@ -9,7 +9,7 @@ import time
 import argparse
 from pathlib import Path
 
-sys.path.insert(0, "/volume/workspace/llm-deploy/src")
+sys.path.insert(0, "/volume/workspace/llm-deploy/llm_deploy")
 
 
 def load_benchmark(path, num_samples=0, seed=42):

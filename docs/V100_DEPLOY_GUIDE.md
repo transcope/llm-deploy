@@ -65,7 +65,7 @@
 | 既有量化模型 | `/volume/models/` | 复用已量化模型 | ✅ 保留 |
 | 项目代码 | `/volume/workspace/llm-deploy/` | 脚本 + 配置 | ❌ 需恢复 |
 | 量化环境 | `/app/venv-quant/` | gptqmodel 工具链 | ❌ 需重建 |
-| 部署环境 | `/app/venv-deploy/` | vLLM 推理 | ❌ 需重建 |
+| 部署环境 | `/app/vllm-venv/` | vLLM 0.8.5 推理 | ❌ 需重建 |
 | 领域数据 | `data/custom_data/` | 校准数据源 | ❌ 需恢复 |
 
 > ⚠️ **HF 缓存依赖**：`configs/gptq_4bit_v100_gptqmodel.yaml` 中 `hf_offline: true` 依赖
@@ -200,7 +200,7 @@ vllm serve Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4 \
 
 ```bash
 # 使用 GPTQModel 量化 (容器内执行)
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --output /app/models/Qwen2.5-7B-GPTQ \
@@ -228,7 +228,7 @@ GPTQ 量化有两个后端，产出格式和 V100 兼容性不同。**V100 必�
 **V100 生产量化命令（推荐）**：
 
 ```bash
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --config configs/gptq_4bit_v100_gptqmodel.yaml \
@@ -271,7 +271,7 @@ vllm serve Qwen/Qwen2.5-7B-Instruct \
 
 ```bash
 # 使用 llm-compressor 量化
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method w8a8 \
     --output /app/models/Qwen2.5-7B-W8A8
@@ -305,14 +305,49 @@ vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ \
 > `Model architectures ['Qwen3ForCausalLM'] are not supported for now`，无法用 vLLM 部署 Qwen3 模型。
 > 且 transformers 4.51.0 无法加载 gptqmodel 2.0.0 的 GPTQ 模型（要求 gptqmodel>=7.0.0）。
 
-**实际可用方案**：用 **gptqmodel + TORCH backend** 部署（纯 torch 实现，V100 最兼容）。
-使用项目提供的 `serve_gptq.py` 脚本（OpenAI 兼容 API）。
+### 4.5.1 最新落地方案：vLLM 0.8.5（推荐）
 
-**方式一：直接运行 serve_gptq.py**
+**vLLM 0.8.5 支持 Qwen3 + CUDA 12.6 + V100**（V0 引擎 + XFORMERS），推理速度约 **30 tok/s**，
+比 gptqmodel TORCH backend（2.6 tok/s）快约 **11.5 倍**。使用项目提供的 `llm_deploy/serve_vllm085.py`
+（OpenAI 兼容 API）。
+
+**环境**：`/app/vllm-venv`（vllm 0.8.5 + torch 2.6.0+cu124 + transformers 4.57.6），
+依赖清单见 `requirements-vllm085.txt`。
+
+```bash
+# 启动服务（后台，容器内）
+docker exec -d zetta_ld bash -c 'nohup /app/vllm-venv/bin/python /volume/workspace/llm-deploy/llm_deploy/serve_vllm085.py \
+    --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
+    --quantization gptq --port 8000 --gpu 0 > /tmp/serve_vllm085.log 2>&1 &'
+
+# 验证
+curl http://localhost:8000/health
+curl http://localhost:8000/v1/models
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"请用一句话介绍中国的春节。"}],"max_tokens":256}'
+```
+
+**serve_vllm085.py 关键逻辑**：
+1. 用 vLLM 0.8.5 的 `LLM()` 直接加载（避免 `vllm serve` 的 multiprocessing 内存 profiling bug）
+2. V100 必需参数：`VLLM_ATTENTION_BACKEND=XFORMERS` + `enforce_eager=True` + `dtype=float16`
+3. 提供 `/v1/models`、`/v1/chat/completions`、`/health` 接口
+
+**已知问题与规避**：
+- **`vllm serve` 内存 profiling 失败**（`Initial used memory > currently used memory`）：
+  用 `LLM()` 直接加载（uniproc executor）规避
+- **单条/无 system 消息的 prompt 产生退化输出 "!!!!"**（V0 引擎 bug）：
+  用带 system 消息的不同 dummy prompt 填充到 2 条，取第一条结果
+- **低 max_tokens 截断 Qwen3 thinking 阶段**：强制至少 256 tokens
+
+### 4.5.2 回退方案：gptqmodel + TORCH backend
+
+若 vLLM 0.8.5 环境不可用，可回退到 **gptqmodel + TORCH backend** 部署（纯 torch 实现，V100 最兼容）。
+使用项目提供的 `serve_gptq.py` 脚本（OpenAI 兼容 API）。
 
 ```bash
 # 启动服务（后台）
-docker exec -d zetta_ld bash -c 'nohup /app/venv-deploy/bin/python /volume/workspace/llm-deploy/serve_gptq.py \
+docker exec -d zetta_ld bash -c 'nohup /app/venv-deploy/bin/python /volume/workspace/llm-deploy/cases/v100/serve_gptq.py \
     --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
     --host 0.0.0.0 --port 8000 > /tmp/serve.log 2>&1 &'
 
@@ -321,19 +356,6 @@ curl http://localhost:8000/v1/models
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" --data @/tmp/test_chat.json
 ```
-
-**方式二：通过 v100-deploy.sh 一键部署（推荐）**
-
-```bash
-# 用 gptqmodel + TORCH backend 部署 Qwen3 (V100 兼容)
-./v100-deploy.sh qwen3-8b --gptqmodel
-
-# 指定本地量化模型路径
-./v100-deploy.sh /volume/models/Mind-SLLM-Qwen3-8B-GPTQ --gptqmodel --port 8000
-```
-
-> `v100-deploy.sh` 已支持 `--gptqmodel` 选项，内部调用 `serve_gptq.py` 部署。
-> 注意：`qwen3-*` 预设的 `MODEL_ID` 是 HuggingFace ID，若用本地量化模型需直接传路径。
 
 **serve_gptq.py 关键逻辑**：
 1. 调用 `install_qwen3_gptq_adapter()` 注入 Qwen3 支持（gptqmodel 2.0.0 默认不识别 qwen3）
@@ -345,8 +367,12 @@ curl http://localhost:8000/v1/chat/completions \
 - **ExllamaV1**：V100 可加载，但加载后 CUDA context 被污染，后续操作报错
 - **TORCH**：纯 torch 实现，无自定义 CUDA kernel，**兼容性最好**（速度较慢但功能正常）
 
-> 若需更高性能，可升级 vLLM 到支持 Qwen3 的版本（如 0.8.x），但需同时解决 compressed-tensors 冲突
-> （vllm 0.8.x 要求 0.9.2，与 llmcompressor 0.4.0 的 0.9.0 冲突）。
+> **方案对比**：
+>
+> | 方案 | 环境 | 速度 | 说明 |
+> |------|------|------|------|
+> | **vLLM 0.8.5**（推荐） | `/app/vllm-venv` | ~30 tok/s | 支持 Qwen3，快 11.5 倍 |
+> | gptqmodel TORCH（回退） | `/app/venv-deploy` | ~2.6 tok/s | 纯 torch，最兼容 |
 
 ---
 
@@ -408,13 +434,13 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 vllm serve Qwen/Qwen2.5-72B-Instruct \
 # 在容器内执行
 
 # 1. 评测原始模型精度 (基准)
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --tasks gsm8k,hellaswag \
     --output /app/results/baseline
 
 # 2. 评测量化模型精度
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model /app/models/Qwen2.5-7B-GPTQ \
     --quantization gptq \
     --tasks gsm8k,hellaswag \
@@ -432,7 +458,7 @@ python src/benchmark_eval.py \
 sleep 30
 
 # 性能测试
-python src/benchmark_eval.py \
+python llm_deploy/benchmark_eval.py \
     --model Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4 \
     --perf-test \
     --base-url http://localhost:8000 \
@@ -544,11 +570,12 @@ llm-deploy/
 │   ├── docker-compose.yml      # 多服务编排
 │   ├── entrypoint.sh           # 容器入口脚本 (环境检查)
 │   └── v100-deploy.sh          # V100 一键部署脚本 ★
-├── src/                        # Python 核心代码
+├── llm_deploy/                        # Python 核心代码
 │   ├── quantize_model.py       # 量化脚本 (V100: GPTQ/BitsAndBytes/W8A8)
 │   ├── deploy_server.py        # 通用部署脚本
+│   ├── serve_vllm085.py        # vLLM 0.8.5 部署服务 (V100+Qwen3 推荐) ★
 │   ├── benchmark_eval.py       # lm-eval 精度评测 + 性能测试
-│   ├── benchmark_domain.py     # 领域精度评测 (API 模式)
+│   ├── benchmark_domain.py     # 领域精度评测 (API 模式 + vllm 0.8.5 本地)
 │   ├── build_accuracy_benchmark.py  # 精度评测 Benchmark 数据集构建
 │   ├── build_calibration_data.py    # 校准数据集构建
 │   ├── validate_calibration.py      # PPL 验证
@@ -559,7 +586,8 @@ llm-deploy/
 │   └── v100/
 │       ├── install_quant_tools.sh   # 量化工具链安装 (Dockerfile 调用)
 │       ├── activate_quant.sh        # 激活量化环境 (物理服务器双 venv)
-│       └── activate_deploy.sh       # 激活部署环境
+│       ├── activate_vllm085.sh      # 激活部署环境 (vllm-venv, vLLM 0.8.5) ★
+│       └── activate_deploy.sh       # 激活旧部署环境 (venv-deploy, vllm 0.7.1)
 ├── configs/
 │   ├── gptq_4bit.yaml                   # GPTQ 基础配置 (通用)
 │   ├── gptq_4bit_v100.yaml              # GPTQ V100 (llmcompressor 后端, A100+ 部署)
@@ -610,5 +638,5 @@ docker exec -it vllm-v100 bash
 ./v100-deploy.sh qwen2.5-vl-7b           # 图文理解
 
 # ========== 评测 ==========
-python src/benchmark_eval.py --model <MODEL> --tasks gsm8k,hellaswag --output /app/results/
+python llm_deploy/benchmark_eval.py --model <MODEL> --tasks gsm8k,hellaswag --output /app/results/
 ```

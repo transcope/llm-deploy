@@ -18,6 +18,9 @@ bak/
 # ZCode workspace
 .zcode/
 
+# CodeBuddy project data
+.codebuddy/
+
 # Credentials
 .git-credentials
 nul

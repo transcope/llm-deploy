@@ -150,7 +150,7 @@ do_quantize() {
     echo -e "${CYAN}[启动量化] 预计耗时 10-40 分钟 (视模型大小而定)...${NC}"
     echo ""
 
-    python src/quantize_model.py \
+    python llm_deploy/quantize_model.py \
         --model "${model}" \
         --method awq \
         --config configs/awq_4bit.yaml \
@@ -203,7 +203,7 @@ do_deploy() {
 
     # deploy_server.py 会自动从 config.json 识别量化方式, 并按 GPU 能力校验参数
     # A100 (SM 8.0) 不会被强制降级, bfloat16 / AWQ 全部按传入值生效
-    python src/deploy_server.py \
+    python llm_deploy/deploy_server.py \
         --model "${model}" \
         --dtype "${DEFAULT_DTYPE}" \
         --gpu-util "${gpu_util}" \
@@ -240,7 +240,7 @@ do_eval() {
 
     # A100 资源充足, 使用默认 gpu_memory_utilization=0.8 即可
     # dtype=bfloat16: A100 原生支持, 比 float16 数值更稳
-    python src/benchmark_eval.py \
+    python llm_deploy/benchmark_eval.py \
         --model "${model}" \
         --quantization "${DEFAULT_QUANT}" \
         --dtype "${DEFAULT_DTYPE}" \
@@ -287,7 +287,7 @@ do_perf() {
     echo ""
 
     # --skip-accuracy: 跳过精度评测, 直接测性能 (避免与运行中的服务争抢显存)
-    python src/benchmark_eval.py \
+    python llm_deploy/benchmark_eval.py \
         --model "${DEFAULT_OUTPUT}" \
         --perf-test \
         --skip-accuracy \

@@ -260,13 +260,13 @@ RUN if [ "$INSTALL_BASE_ONLY" != "true" ]; then \
 WORKDIR /app
 
 # 复制项目文件
-COPY src/ /app/src/
+COPY llm_deploy/ /app/llm_deploy/
 COPY configs/ /app/configs/
-COPY requirements.txt /app/
+COPY requirements-quant.txt requirements-vllm085.txt /app/
 COPY docker/entrypoint.sh /app/
 COPY docker/v100-deploy.sh /app/
 
-RUN chmod +x /app/entrypoint.sh /app/v100-deploy.sh /app/src/*.py
+RUN chmod +x /app/entrypoint.sh /app/v100-deploy.sh /app/llm_deploy/*.py
 
 # =============================================================================
 # 验证安装

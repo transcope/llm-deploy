@@ -11,7 +11,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-sys.path.insert(0, "/volume/workspace/llm-deploy/src")
+sys.path.insert(0, "/volume/workspace/llm-deploy/llm_deploy")
 
 import torch
 from qwen3_gptq_adapter import install_qwen3_gptq_adapter

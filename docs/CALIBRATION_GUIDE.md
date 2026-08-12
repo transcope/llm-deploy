@@ -67,7 +67,7 @@ calibration:
 
 ## 3. 数据来源与结构
 
-`get_calibration_texts()`（`src/quantize_model.py`）按优先级取数据：
+`get_calibration_texts()`（`llm_deploy/quantize_model.py`）按优先级取数据：
 
 ### 来源 0：本地自定义 JSONL（`custom_data` 非空时，最高优先级）
 
@@ -108,7 +108,7 @@ JSONL 每行支持两种结构（与 HF 数据集完全相同）：
 
 路径解析规则：
 - 绝对路径 → 直接使用
-- 相对路径 → 从项目根目录（`src/` 的父目录）尝试拼接
+- 相对路径 → 从项目根目录（`llm_deploy/` 的父目录）尝试拼接
 - 文件不存在 → 打印警告并回退到下一优先级
 
 ### 来源 1：HuggingFace 数据集（`dataset` 非空时）
@@ -299,7 +299,7 @@ calibration:
 
 ```bash
 # 量化 + 自动 PPL 验证
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --config configs/gptq_4bit_v100_gptqmodel.yaml \
@@ -307,7 +307,7 @@ python src/quantize_model.py \
     --validate                     # 新增：量化后自动做 PPL 验证
 
 # 单独验证（模型已量化，补跑验证）
-python src/validate_calibration.py \
+python llm_deploy/validate_calibration.py \
     --baseline Qwen/Qwen2.5-7B-Instruct \
     --quantized ./models/Qwen2.5-7B-GPTQ \
     --quantization gptq
@@ -332,7 +332,7 @@ python src/validate_calibration.py \
 | 默认不启用 | `--validate` 是可选开关，不影响现有量化流程 |
 | 结果仅警告 | PPL 超阈值**不会阻断导出**，只打印警告，由用户自行判断 |
 | 验证文本 | 内置 200 条通用中英文文本（日常对话 + 知识问答 + 领域感知），无需外网 |
-| 自定义验证集 | `--val-data ./data/evaluation/eval_data.jsonl`，可从领域数据构建：`python src/build_calibration_data.py --mode eval --num-samples 100` |
+| 自定义验证集 | `--val-data ./data/evaluation/eval_data.jsonl`，可从领域数据构建：`python llm_deploy/build_calibration_data.py --mode eval --num-samples 100` |
 | 阈值调优 | `--max-ppl-delta 3.0`，默认 5.0（经验值，覆盖大部分正常量化场景） |
 
 **典型 delta 参考值**：
@@ -381,14 +381,14 @@ JSONL 文件（每行一个 JSON 对象），支持两种字段结构：
 
 ### 7.2 构建校准数据集脚本
 
-`src/build_calibration_data.py` 提供从领域数据源自动构建校准数据集的能力：
+`llm_deploy/build_calibration_data.py` 提供从领域数据源自动构建校准数据集的能力：
 
 ```bash
 # 基本用法：从 data/custom_data/ 下所有领域数据源混合采样 256 条
-python src/build_calibration_data.py --num-samples 256 --seed 42
+python llm_deploy/build_calibration_data.py --num-samples 256 --seed 42
 
 # 指定输出路径
-python src/build_calibration_data.py --num-samples 256 --output ./data/custom_data/calibration_data.jsonl
+python llm_deploy/build_calibration_data.py --num-samples 256 --output ./data/custom_data/calibration_data.jsonl
 ```
 
 **内置数据源**（位于 `data/custom_data/`）：
@@ -436,10 +436,10 @@ calibration:
 #    (已有 telecom_exam/, comm_qa_selfinst2/, math/ 等)
 
 # 2. 构建校准数据集 (256 条领域混合样本)
-python src/build_calibration_data.py --num-samples 256 --seed 42
+python llm_deploy/build_calibration_data.py --num-samples 256 --seed 42
 
 # 3. 在 YAML 中配置 custom_data 并量化
-python src/quantize_model.py \
+python llm_deploy/quantize_model.py \
     --model Qwen/Qwen2.5-7B-Instruct \
     --method gptq \
     --config configs/gptq_4bit_v100_gptqmodel.yaml \
@@ -565,7 +565,7 @@ rm -rf /tmp/custom_data
 ```bash
 cd /volume/workspace/llm-deploy
 source /app/venv-quant/bin/activate
-python src/build_calibration_data.py --list-sources
+python llm_deploy/build_calibration_data.py --list-sources
 # 应列出全部 10 个数据源
 ```
 

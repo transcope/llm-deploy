@@ -125,7 +125,7 @@ def get_calibration_texts(config: dict) -> list:
         jsonl_path = custom_data
         # 支持相对于项目根目录的路径
         if not os.path.isfile(jsonl_path):
-            # 尝试相对于项目根目录 (src/ 的父目录)
+            # 尝试相对于项目根目录 (llm_deploy/ 的父目录)
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(script_dir)
             alt_path = os.path.join(project_root, jsonl_path)

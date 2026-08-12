@@ -22,9 +22,9 @@ cd /volume/workspace/llm-deploy
 source /app/venv-quant/bin/activate
 #   或 source cases/v100/activate_quant.sh
 
-#   部署/评测 → 部署评测环境 (venv-deploy)
-source /app/venv-deploy/bin/activate
-#   或 source cases/v100/activate_deploy.sh
+#   部署/评测 → 部署评测环境 (vllm-venv, vLLM 0.8.5)
+source /app/vllm-venv/bin/activate
+#   或 source cases/v100/activate_vllm085.sh
 ```
 
 **记住：每次新开终端都要执行步骤 2~4。**
@@ -34,12 +34,13 @@ source /app/venv-deploy/bin/activate
 | 任务 | 使用环境 | 原因 |
 |:-----|:---------|:-----|
 | 模型量化 (GPTQ/AWQ) | **venv-quant** | 含 gptqmodel 2.0.0、bitsandbytes 等量化工具链 |
-| vLLM 模型部署 | **venv-deploy** | 无量化工具链，更轻量 |
-| 精度评测 (benchmark_domain.py) | **venv-deploy** | 无需 gptqmodel，避免版本冲突 |
-| PPL 验证 (validate_calibration.py) | **venv-deploy** | 只需 torch + transformers |
-| lm-eval 标准评测 | **venv-deploy** | 只需 lm_eval + torch |
+| vLLM 模型部署 (Qwen3) | **vllm-venv** | vLLM 0.8.5 支持 Qwen3 + V100，快 11.5 倍 |
+| 精度评测 (benchmark_domain.py) | **vllm-venv** | vLLM 0.8.5 本地评测 |
+| PPL 验证 (validate_calibration.py) | **vllm-venv** | 只需 torch + transformers |
+| lm-eval 标准评测 | **vllm-venv** | 只需 lm_eval + torch |
 
-**旧环境** `/app/venv/` 保留作为兼容，新任务请优先使用以上两个环境。
+**旧环境** `/app/venv/`、`/app/venv-deploy/`（vllm 0.7.1，不支持 Qwen3）保留作为兼容，
+新任务请优先使用 `venv-quant` + `vllm-venv`。
 
 > ⚠️ 密码如变更请更新本文档。不要将本文档提交到公共仓库。
 
@@ -55,50 +56,53 @@ source /app/venv-deploy/bin/activate
 | `/volume/models/Mind-SLLM-Qwen3-8B-GPTQ` | **最新 GPTQ 量化模型**（5.8 GB，V100 用 TORCH backend 加载） |
 | `/app/venv/` | Python 环境（旧，保留兼容） |
 | `/app/venv-quant/` | **量化环境**（gptqmodel 2.0.0 + 量化工具链） |
-| `/app/venv-deploy/` | **部署评测环境**（vLLM + transformers，无 gptqmodel） |
-| `/volume/workspace/llm-deploy/src/activate_quant.sh` | 量化环境快捷激活脚本 |
-| `/volume/workspace/llm-deploy/src/activate_deploy.sh` | 部署评测环境快捷激活脚本 |
+| `/app/venv-deploy/` | 部署评测环境（旧，vllm 0.7.1，不支持 Qwen3） |
+| `/app/vllm-venv/` | **部署评测环境（最新）**（vllm 0.8.5 + torch 2.6.0+cu124 + transformers 4.57.6） |
+| `/volume/workspace/llm-deploy/cases/v100/activate_quant.sh` | 量化环境快捷激活脚本 |
+| `/volume/workspace/llm-deploy/cases/v100/activate_vllm085.sh` | 部署评测环境快捷激活脚本（vllm 0.8.5） |
 | `/volume/workspace/llm-deploy/requirements-quant.txt` | 量化环境依赖快照 |
-| `/volume/workspace/llm-deploy/requirements-deploy.txt` | 部署评测环境依赖快照 |
+| `/volume/workspace/llm-deploy/requirements-vllm085.txt` | 部署评测环境依赖快照（vllm 0.8.5） |
+| `/volume/workspace/llm-deploy/requirements-deploy.txt` | 旧部署评测环境依赖快照（vllm 0.7.1） |
 | `/volume/workspace/llm-deploy/data/calibration/` | 校准数据目录（含 v1/v2） |
 | `/volume/workspace/llm-deploy/data/evaluation/` | 评测数据 |
 
 ---
 
-## 3. 双虚拟环境架构
+## 3. 多虚拟环境架构
 
 ### 3.1 设计动机
 
-项目采用双虚拟环境隔离，解决以下问题：
+项目采用多虚拟环境隔离，解决以下问题：
 
 | 问题 | 解决方式 |
 |:-----|:---------|
-| **gptqmodel 版本锁定**：量化依赖 gptqmodel 2.0.0（定制 whl，编译为 cu124torch2.5），但 vLLM 0.8.x 要求 torch 2.6.0 / compressed-tensors 0.9.2，与 gptqmodel whl（torch 2.5）及 llmcompressor 0.4.0（compressed-tensors 0.9.0）冲突 | 量化与部署分离，各自独立维护依赖；统一锁定 torch 2.5.1+cu124 / vLLM 0.7.1 / compressed-tensors 0.9.0 / numpy<2.0 |
+| **gptqmodel 版本锁定**：量化依赖 gptqmodel 2.0.0（定制 whl，编译为 cu124torch2.5），但 vLLM 0.8.x 要求 torch 2.6.0 / compressed-tensors 0.9.2，与 gptqmodel whl（torch 2.5）及 llmcompressor 0.4.0（compressed-tensors 0.9.0）冲突 | 量化与部署分离，各自独立维护依赖 |
 | **optimum 不兼容**：optimum 要求 gptqmodel≥7.0.0，但核心工作流（量化→vLLM 部署）不经过 optimum | deploy 环境安装 optimum 但不含 [gptq] 扩展，无版本冲突 |
 | **环境轻量化**：评测脚本只需要 torch + transformers，不需要 gptqmodel、bitsandbytes 等量化工具 | deploy 环境减少 ~0.2 GB 无用依赖 |
+| **vLLM 版本演进**：vLLM 0.7.1 不支持 Qwen3，需升级到 0.8.5（支持 Qwen3 + V100） | 新增 `vllm-venv`（vllm 0.8.5），与旧 `venv-deploy`（vllm 0.7.1）并存 |
 
 ### 3.2 环境对比
 
-| 维度 | venv-quant | venv-deploy |
-|:-----|:-----------|:------------|
-| 路径 | `/app/venv-quant/` | `/app/venv-deploy/` |
-| 大小 | 8.5 GB | 8.3 GB |
-| 基础框架 | torch 2.5.1+cu124, transformers 4.51.0 | torch 2.5.1+cu124, transformers 4.51.0 |
-| 推理引擎 | vLLM 0.7.1 | vLLM 0.7.1 |
-| 量化工具 | gptqmodel 2.0.0, bitsandbytes 0.49.2, llmcompressor 0.4.0, compressed-tensors 0.9.0 | ❌ 无 |
-| optimum | ✅ (不含 [gptq] 扩展) | ✅ (不含 [gptq] 扩展) |
-| 快捷激活 | `source cases/v100/activate_quant.sh` | `source cases/v100/activate_deploy.sh` |
+| 维度 | venv-quant | vllm-venv（最新） | venv-deploy（旧） |
+|:-----|:-----------|:------------------|:------------------|
+| 路径 | `/app/venv-quant/` | `/app/vllm-venv/` | `/app/venv-deploy/` |
+| 基础框架 | torch 2.5.1+cu124, transformers 4.51.0 | torch 2.6.0+cu124, transformers 4.57.6 | torch 2.5.1+cu124, transformers 4.51.0 |
+| 推理引擎 | vLLM 0.7.1 | **vLLM 0.8.5** | vLLM 0.7.1 |
+| Qwen3 支持 | ❌ | ✅ | ❌ |
+| 量化工具 | gptqmodel 2.0.0, bitsandbytes 0.49.2, llmcompressor 0.4.0, compressed-tensors 0.9.0 | ❌ 无 | ❌ 无 |
+| 快捷激活 | `source cases/v100/activate_quant.sh` | `source cases/v100/activate_vllm085.sh` | `source cases/v100/activate_deploy.sh` |
+| 依赖快照 | `requirements-quant.txt` | `requirements-vllm085.txt` | `requirements-deploy.txt` |
 
 ### 3.3 激活方式
 
 ```bash
 # 方式 A：直接激活
 source /app/venv-quant/bin/activate     # 量化环境
-source /app/venv-deploy/bin/activate    # 部署评测环境
+source /app/vllm-venv/bin/activate      # 部署评测环境 (vllm 0.8.5, 推荐)
 
 # 方式 B：快捷脚本（推荐，显示版本信息）
 source cases/v100/activate_quant.sh
-source cases/v100/activate_deploy.sh
+source cases/v100/activate_vllm085.sh
 ```
 
 ### 3.4 从零重建
@@ -158,7 +162,7 @@ bash /volume/workspace/llm-deploy/cases/v100/install_quant_tools.sh
 > `install_quant_tools.sh` 还会额外安装 `auto-gptq`（legacy）、`bitsandbytes`、`llmcompressor`、
 > `compressed-tensors`，与 requirements 快照版本可能略有差异。
 
-#### 3.4.3 重建 venv-deploy
+#### 3.4.3 重建 venv-deploy（旧，vllm 0.7.1）
 
 ```bash
 python3 -m venv /app/venv-deploy
@@ -167,7 +171,34 @@ pip install --upgrade pip
 pip install -r /volume/workspace/llm-deploy/requirements-deploy.txt
 ```
 
-#### 3.4.4 重建后验证
+#### 3.4.4 重建 vllm-venv（最新，vllm 0.8.5）
+
+> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`requirements-vllm085.txt` 中的 `torch==2.6.0+cu124`
+> 若从 PyPI 默认源安装，会装成 **CPU 版**（无 CUDA 支持）。必须先单独从 cu124 索引安装 torch 三件套。
+
+```bash
+python3.12 -m venv /app/vllm-venv
+source /app/vllm-venv/bin/activate
+pip install --upgrade pip
+
+# ① 先装 torch 三件套（CUDA 12.4 版，与 vLLM 0.8.5 的 _C.abi3.so ABI 兼容）
+pip install torch==2.6.0 torchvision==0.25.0 torchaudio==2.6.0 \
+    --index-url https://download.pytorch.org/whl/cu124
+
+# ② 再装 vLLM 0.8.5 + transformers 4.57.6
+pip install vllm==0.8.5
+pip install transformers==4.57.6
+
+# ③ 其余依赖
+pip install -r /volume/workspace/llm-deploy/requirements-vllm085.txt
+```
+
+> ⚠️ **版本兼容性要点**：
+> - `torch==2.6.0+cu124`：必须用 cu124 版（cu126 用新 ABI 导致 `undefined symbol`）
+> - `transformers==4.57.6`：5.15.0 报 `Qwen2Tokenizer has no attribute all_special_tokens_extended`
+> - `VLLM_ATTENTION_BACKEND=XFORMERS`：V100 不支持 Flash Attention
+
+#### 3.4.5 重建后验证
 
 ```bash
 # 验证 venv-quant
@@ -182,13 +213,14 @@ assert torch.cuda.is_available(), 'CUDA 不可用'
 print('venv-quant: OK')
 "
 
-# 验证 venv-deploy
-source /app/venv-deploy/bin/activate
+# 验证 vllm-venv (最新)
+source /app/vllm-venv/bin/activate
 python -c "
 import torch, vllm, transformers
 print(f'torch {torch.__version__} | vllm {vllm.__version__} | transformers {transformers.__version__}')
 assert torch.cuda.is_available(), 'CUDA 不可用'
-print('venv-deploy: OK')
+assert vllm.__version__ == '0.8.5', 'vllm 版本应为 0.8.5'
+print('vllm-venv: OK')
 "
 ```
 
@@ -205,7 +237,7 @@ print('venv-deploy: OK')
 
 ```bash
 # 复制单个文件到容器
-cat "D:/project/opencode/llm-deploy/src/build_accuracy_benchmark.py" | ssh jiysh@192.168.192.186 "docker exec -i zetta_ld bash -c 'cat > /volume/workspace/llm-deploy/src/build_accuracy_benchmark.py'"
+cat "D:/project/opencode/llm-deploy/llm_deploy/build_accuracy_benchmark.py" | ssh jiysh@192.168.192.186 "docker exec -i zetta_ld bash -c 'cat > /volume/workspace/llm-deploy/llm_deploy/build_accuracy_benchmark.py'"
 ```
 
 ### 4.2 整目录同步（从零恢复项目代码时使用）
@@ -244,7 +276,7 @@ rm -rf /tmp/llm-deploy-src
 # 容器内执行
 cd /volume/workspace/llm-deploy
 ls -la
-# 应看到: init, README.md, requirements*.txt, src/, configs/, cases/, docs/, docker/
+# 应看到: init, README.md, requirements*.txt, llm_deploy/, configs/, cases/, docs/, docker/
 ```
 
 > 完整的从零恢复流程见 [FROM_SCRATCH_RUNBOOK.md 步骤 2](FROM_SCRATCH_RUNBOOK.md#2-恢复项目代码)。
@@ -267,7 +299,8 @@ ls -la
 
 | 场景 | 推荐后端 | 说明 |
 |---|---|---|
-| Qwen3 系列精度评测 | `transformers` | vLLM 在 V100+Qwen3 会崩溃（LLVM ERROR: Failed to compute parent layout） |
+| Qwen3 系列部署/评测 | **vLLM 0.8.5**（`vllm-venv`） | vLLM 0.8.5 支持 Qwen3 + V100，快 11.5 倍 |
+| Qwen3 精度评测（回退） | `transformers` | 旧 vLLM 0.7.1 在 V100+Qwen3 会崩溃 |
 | 其他模型推理 | `vllm` 或 `transformers` | 可按需选择 |
 
 ### 6.2 transformers 推理注意事项
@@ -335,11 +368,12 @@ ValueError: Model architectures ['Qwen3ForCausalLM'] are not supported for now.
 **原因**: vLLM 0.7.1 的模型注册表不含 `Qwen3ForCausalLM`（只有 Qwen2），且 V100（SM 7.0）与部分 vLLM kernel 不兼容。
 
 **解决**:
-1. **首选**：用 **gptqmodel + TORCH backend** 部署（V100 兼容），见
-   [V100_DEPLOY_GUIDE.md 4.5 节](V100_DEPLOY_GUIDE.md#45-v100--qwen3-部署方案实际验证)
-2. **注意**：`--backend transformers` 无法加载 gptqmodel 2.0.0 的 GPTQ 模型（transformers 要求 gptqmodel>=7.0.0），
+1. **首选**：升级到 **vLLM 0.8.5**（`vllm-venv`），支持 Qwen3 + V100，用 `llm_deploy/serve_vllm085.py` 部署，见
+   [V100_DEPLOY_GUIDE.md 4.5.1 节](V100_DEPLOY_GUIDE.md#451-最新落地方案vllm-085推荐)
+2. **回退**：用 **gptqmodel + TORCH backend** 部署（V100 兼容，速度较慢），见
+   [V100_DEPLOY_GUIDE.md 4.5.2 节](V100_DEPLOY_GUIDE.md#452-回退方案gptqmodel--torch-backend)
+3. **注意**：`--backend transformers` 无法加载 gptqmodel 2.0.0 的 GPTQ 模型（transformers 要求 gptqmodel>=7.0.0），
    仅适用于 FP16 原模型
-3. 升级 vLLM 到支持 Qwen3 的版本（如 0.8.x），但需解决 compressed-tensors 冲突
 
 ### 7.5 显存不足 OOM
 
@@ -371,7 +405,7 @@ docker logs zetta_ld
 docker ps -a
 
 # 在容器内执行单条命令（无需交互式）
-docker exec zetta_ld bash -c 'source /app/venv/bin/activate && python src/build_accuracy_benchmark.py --help'
+docker exec zetta_ld bash -c 'source /app/venv/bin/activate && python llm_deploy/build_accuracy_benchmark.py --help'
 ```
 
 ---

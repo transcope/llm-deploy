@@ -9,25 +9,32 @@
 
 用法:
     # 通过 API 评测 (服务启动后)
-    python src/benchmark_domain.py \
+    python llm_deploy/benchmark_domain.py \
         --base-url http://192.168.192.186:8000 \
         --model Qwen3-8B-GPTQ \
         --output results/domain_eval.json
 
     # 评测基线模型 (通过 API)
-    python src/benchmark_domain.py \
+    python llm_deploy/benchmark_domain.py \
         --base-url http://192.168.192.186:8001 \
         --model Mind-SLLM-Qwen3-8B \
         --output results/domain_baseline.json
 
     # 本地加载模型评测 (需 GPU)
-    python src/benchmark_domain.py \
+    python llm_deploy/benchmark_domain.py \
         --local \
         --model /app/local_models/Mind-SLLM-Qwen3-8B \
         --output results/domain_eval.json
 
+    # 本地评测 GPTQ 量化模型 (V100 + vLLM 0.8.5)
+    python llm_deploy/benchmark_domain.py \
+        --local \
+        --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
+        --quantization gptq \
+        --output results/domain_gptq.json
+
     # 指定 benchmark 数据
-    python src/benchmark_domain.py \
+    python llm_deploy/benchmark_domain.py \
         --benchmark data/custom_data/accuracy_benchmark.jsonl \
         --num-samples 50 \
         --base-url http://localhost:8000 \
@@ -365,12 +372,22 @@ def evaluate_api(args):
 
 
 def evaluate_local_vllm(args, samples):
-    """本地模式 (vLLM 后端): 使用 vLLM 批量推理"""
+    """本地模式 (vLLM 后端): 使用 vLLM 批量推理
+
+    V100 专用参数 (vLLM 0.8.5):
+      - VLLM_ATTENTION_BACKEND=XFORMERS (V100 不支持 Flash Attention)
+      - enforce_eager=True (避免 CUDA graph 问题)
+      - dtype=float16 (V100 不支持 bfloat16)
+      - quantization=gptq (量化模型)
+    """
     try:
         from vllm import LLM, SamplingParams
     except ImportError:
         print("[错误] vLLM 未安装", file=sys.stderr)
         sys.exit(1)
+
+    # V100 需要 XFORMERS attention backend
+    os.environ.setdefault("VLLM_ATTENTION_BACKEND", "XFORMERS")
 
     # 构建 prompts
     prompts = []
@@ -383,22 +400,37 @@ def evaluate_local_vllm(args, samples):
         prompts.append(messages)
 
     print(f"加载模型: {args.model}")
-    print(f"  tensor_parallel_size={args.tp}")
-    llm = LLM(
+    print(f"  tensor_parallel_size={args.tp}, quantization={args.quantization}")
+    print(f"  enforce_eager={args.enforce_eager}, gpu_util={args.gpu_util}, max_model_len={args.max_model_len}")
+    llm_kwargs = dict(
         model=args.model,
         tensor_parallel_size=args.tp,
         trust_remote_code=True,
         dtype="float16",
+        enforce_eager=args.enforce_eager,
+        gpu_memory_utilization=args.gpu_util,
+        max_model_len=args.max_model_len,
     )
+    if args.quantization:
+        llm_kwargs["quantization"] = args.quantization
+    llm = LLM(**llm_kwargs)
 
     sampling_params = SamplingParams(
         temperature=args.temperature,
         max_tokens=args.max_tokens,
     )
 
+    # vLLM 0.8.5 V0 引擎 bug: 单条/无 system 消息的 prompt 会产生退化输出 "!!!!"
+    # 用一条带 system 消息的不同 dummy prompt 填充到 2 条, 取第一条结果
+    sys_msg = {"role": "system", "content": "你是通信领域专家，请准确回答以下问题。"}
+    dummy = [sys_msg, {"role": "user", "content": "请介绍一下通信中的调制方式。"}]
+    batch_prompts = prompts + [dummy]
+
     print(f"\n开始评测 ({len(prompts)} 条)...")
     start_time = time.time()
-    outputs = llm.chat(prompts, sampling_params)
+    outputs = llm.chat(batch_prompts, sampling_params)
+    # 丢弃 dummy 的最后一条结果
+    outputs = outputs[:len(prompts)]
     elapsed = time.time() - start_time
     print(f"推理完成, 耗时 {elapsed:.1f}s ({len(prompts)/elapsed:.1f} samples/s)")
 
@@ -670,11 +702,27 @@ def main():
     )
     parser.add_argument(
         "--backend", type=str, default="vllm", choices=["vllm", "transformers"],
-        help="本地模式推理后端 (默认 vllm; V100+Qwen3 请用 transformers)"
+        help="本地模式推理后端 (默认 vllm; V100+Qwen3 用 vllm 0.8.5 或 transformers)"
     )
     parser.add_argument(
         "--tp", type=int, default=1,
         help="本地模式: tensor_parallel_size (仅 vllm 后端)"
+    )
+    parser.add_argument(
+        "--quantization", type=str, default=None,
+        help="本地模式 (vllm 后端): 量化方式 (gptq)"
+    )
+    parser.add_argument(
+        "--enforce-eager", action="store_true", default=True,
+        help="本地模式 (vllm 后端): 禁用 CUDA graph (V100 需要)"
+    )
+    parser.add_argument(
+        "--gpu-util", type=float, default=0.9,
+        help="本地模式 (vllm 后端): GPU 内存利用率"
+    )
+    parser.add_argument(
+        "--max-model-len", type=int, default=4096,
+        help="本地模式 (vllm 后端): 最大序列长度"
     )
     parser.add_argument(
         "--no-thinking", action="store_true", default=True,

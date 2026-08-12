@@ -95,7 +95,7 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=0
     command: >
-      python src/quantize_model.py --help
+      python llm_deploy/quantize_model.py --help
     deploy:
       resources:
         reservations:
@@ -114,7 +114,7 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=0
     command: >
-      python src/benchmark_eval.py --help
+      python llm_deploy/benchmark_eval.py --help
     deploy:
       resources:
         reservations:
