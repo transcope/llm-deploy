@@ -23,14 +23,15 @@
 | # | 阻塞点 | 风险 | 本手册处理位置 |
 |:-:|--------|------|----------------|
 | 1 | 项目代码获取方式未文档化（清空 `/volume/workspace/llm-deploy` 后如何恢复代码） | 高 | [步骤 2](#2-恢复项目代码) |
-| 2 | `data/custom_data/` 领域数据在 `.gitignore` 中，清空后 10 个数据源丢失，校准数据无法重建 | 高 | [步骤 4](#4-准备校准数据) |
-| 3 | `requirements-quant.txt` 引用 `file:///app/gptqmodel-2.0.0+...whl` 定制 whl，重建 venv-quant 时若该 whl 不在则安装失败 | 中 | [步骤 3](#3-重建双虚拟环境) |
+| 2 | `data/custom_data/` 领域数据在 `.gitignore` 中，清空后 10 个数据源丢失，校准数据无法重建（数据源已备份于容器 `/volume/datahub/`，从零恢复时复制即可） | 高 | [步骤 4](#4-准备校准数据) |
+| 3 | `cases/v100/gptq_vllm085/requirements-quant.txt` 引用 `file:///app/gptqmodel-2.0.0+...whl` 定制 whl，重建 venv-quant 时若该 whl 不在则安装失败 | 中 | [步骤 3](#3-重建双虚拟环境) |
 
-**可行路径**：步骤 2 用 `scp`/`rsync` 从本地整目录上传项目代码；步骤 4 从本地备份恢复 `data/custom_data/`
+**可行路径**：步骤 2 用 `scp`/`rsync` 从本地整目录上传项目代码；步骤 4 从容器 `/volume/datahub/`
+**复制** `custom_data/` 与 `calibration/` 到项目目录（**不要用 `mv` 移动**，保留 datahub 源数据）
 或改用 HF 数据集回退；步骤 3 优先用定制 whl，缺失时用 `install_quant_tools.sh` 从 PyPI 安装。
 
-> ⚠️ **执行前务必确认**：本地 `D:/project/opencode/llm-deploy/data/custom_data/` 是否有完整备份。
-> 若无备份且无法重新获取领域数据，步骤 4 只能退化为 HF 通用校准集，量化精度会偏离领域最优。
+> ✅ **数据已统一存放于容器 `/volume/datahub/`**（含 `custom_data/` 与 `calibration/`），
+> 今后无需再从本地上传数据。从零恢复时直接从 datahub 复制即可。
 
 ---
 
@@ -133,7 +134,7 @@ ls -la
 # 确认关键脚本存在
 test -f llm_deploy/quantize_model.py && echo "OK: quantize_model.py"
 test -f configs/gptq_4bit_v100_gptqmodel.yaml && echo "OK: gptqmodel 配置"
-test -f requirements-quant.txt && echo "OK: requirements-quant.txt"
+test -f cases/v100/gptq_vllm085/requirements-quant.txt && echo "OK: requirements-quant.txt"
 test -f requirements-deploy.txt && echo "OK: requirements-deploy.txt"
 ```
 
@@ -142,13 +143,17 @@ test -f requirements-deploy.txt && echo "OK: requirements-deploy.txt"
   （它们在 `.gitignore` 中，不需要上传）
 - 权限不足 → `chown -R jiysh:jiysh /volume/workspace/llm-deploy`
 
+> ✅ **`data/` 目录无需上传**：领域数据（`custom_data/`）与校准数据（`calibration/`）已统一存放于
+> 容器 `/volume/datahub/`，从零恢复时用 `cp -r` **复制**到项目 `data/` 下即可（**不要用 `mv` 移动**），
+> 详见 [步骤 4](#4-准备校准数据)。
+
 > 单文件同步方式见 [V100_SERVER_GUIDE.md 第 4 节](V100_SERVER_GUIDE.md#4-项目文件同步从本地上传到服务器)。
 
 ---
 
 ## 3. 重建多虚拟环境
 
-> ⚠️ **阻塞点 3**：`requirements-quant.txt` 第 60 行引用
+> ⚠️ **阻塞点 3**：`cases/v100/gptq_vllm085/requirements-quant.txt` 第 60 行引用
 > `gptqmodel @ file:///app/gptqmodel-2.0.0+cu124torch2.5-cp312-cp312-linux_x86_64.whl`。
 > 重建 `venv-quant` 时若该 whl 文件不在 `/app/` 下，`pip install -r` 会失败。
 
@@ -163,7 +168,7 @@ ls -la /app/gptqmodel-2.0.0*.whl 2>/dev/null && echo "whl 存在" || echo "whl �
 
 ### 3.2 重建 venv-quant（量化环境）
 
-> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`requirements-quant.txt` 中的 `torch==2.5.1` 若从
+> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`cases/v100/gptq_vllm085/requirements-quant.txt` 中的 `torch==2.5.1` 若从
 > PyPI 默认源安装，会装成 **CPU 版**（无 CUDA 支持，`torch.cuda.is_available()` 为 False），量化无法进行。
 > 必须先单独从 cu124 索引安装 torch 三件套，再安装其余依赖。
 
@@ -179,7 +184,7 @@ pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
     --index-url https://download.pytorch.org/whl/cu124
 
 # ② 再装其余依赖（torch 已满足，pip 不会重复下载 CPU 版）
-pip install -r /volume/workspace/llm-deploy/requirements-quant.txt
+pip install -r /volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-quant.txt
 ```
 
 **情况 B：whl 文件缺失**（回退路径，从 PyPI 安装 gptqmodel）：
@@ -190,7 +195,7 @@ source /app/venv-quant/bin/activate
 pip install --upgrade pip
 
 # 先安装除 gptqmodel 外的依赖（手动跳过 file:// 引用行）
-grep -v '^gptqmodel @ file://' /volume/workspace/llm-deploy/requirements-quant.txt \
+grep -v '^gptqmodel @ file://' /volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-quant.txt \
     > /tmp/req-quant-no-gptq.txt
 pip install -r /tmp/req-quant-no-gptq.txt
 
@@ -203,7 +208,7 @@ bash /volume/workspace/llm-deploy/cases/v100/install_quant_tools.sh
 
 ### 3.3 重建 vllm-venv（部署评测环境，vLLM 0.8.5）
 
-> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`requirements-vllm085.txt` 中的 `torch==2.6.0+cu124`
+> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`cases/v100/gptq_vllm085/requirements-vllm085.txt` 中的 `torch==2.6.0+cu124`
 > 若从 PyPI 默认源安装，会装成 **CPU 版**（无 CUDA 支持）。必须先单独从 cu124 索引安装 torch 三件套。
 
 ```bash
@@ -220,7 +225,7 @@ pip install vllm==0.8.5
 pip install transformers==4.57.6
 
 # ③ 其余依赖
-pip install -r /volume/workspace/llm-deploy/requirements-vllm085.txt
+pip install -r /volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-vllm085.txt
 ```
 
 > ⚠️ **版本兼容性要点**：
@@ -274,16 +279,22 @@ print('vllm-venv: OK')
 
 ### 4.1 恢复 data/custom_data/ 领域数据
 
-**方式 A：从本地备份上传（推荐，保证领域精度）**：
+> ✅ **数据源已统一存放于容器 `/volume/datahub/`，无需再从本地上传。**
+> 今后领域数据（`custom_data/`）与校准数据（`calibration/`）都放在 `/volume/datahub/` 下，
+> 从零恢复时直接从 datahub **复制**到项目目录即可（**不要使用 `mv` 移动**，避免破坏 datahub 源数据）。
+
+**方式 A：从 /volume/datahub 复制（推荐，保证领域精度）**：
 
 ```bash
-# 本地终端：上传 data/custom_data/ 到容器
-scp -r D:/project/opencode/llm-deploy/data/custom_data `
-    jiysh@192.168.192.186:/tmp/custom_data
-ssh jiysh@192.168.192.186
-docker cp /tmp/custom_data zetta_ld:/volume/workspace/llm-deploy/data/custom_data
-rm -rf /tmp/custom_data
+# 容器内执行：从 datahub 复制 custom_data 到项目目录
+cd /volume/workspace/llm-deploy
+mkdir -p data
+cp -r /volume/datahub/custom_data data/custom_data
+cp -r /volume/datahub/calibration data/calibration
 ```
+
+> ⚠️ 使用 `cp -r`（复制）而非 `mv`（移动），确保 `/volume/datahub/` 源数据始终保留，
+> 便于后续多次重建或复用。
 
 **验证数据源完整**：
 
@@ -296,7 +307,7 @@ python llm_deploy/build_calibration_data.py --list-sources
 #   agent_sft, comm_qa_seed, spec_exam, agent_general, agent_iridium, codegen
 ```
 
-**方式 B：无本地备份时退化为 HF 通用校准集**（精度偏离领域最优）：
+**方式 B：无 datahub 数据时退化为 HF 通用校准集**（精度偏离领域最优）：
 
 跳过本步，直接在 YAML 配置中移除 `custom_data` 字段，让 `get_calibration_texts()` 回退到
 `neuralmagic/LLM_compression_calibration`（依赖 `/volume/hf_cache` 离线缓存）。
@@ -358,7 +369,7 @@ grep custom_data configs/gptq_4bit_v100_gptqmodel.yaml
 ```
 
 **故障排查**：
-- `--list-sources` 列出数据源 < 10 → `data/custom_data/` 恢复不完整，重新上传
+- `--list-sources` 列出数据源 < 10 → `data/custom_data/` 恢复不完整，重新从 `/volume/datahub/custom_data` 复制
 - v2 生成报 `OSError: ... model not found` → 确认 `/app/local_models/Mind-SLLM-Qwen3-8B` 存在
 - v2 行数为 0 → 检查 v1 是否生成成功：`wc -l data/calibration/calibration_data.jsonl`
 
@@ -675,13 +686,19 @@ scp -r D:/project/opencode/llm-deploy jiysh@192.168.192.186:/volume/workspace/ll
 # ========== 3. 重建环境 ==========
 cd /volume/workspace/llm-deploy
 python3 -m venv /app/venv-quant && source /app/venv-quant/bin/activate
-pip install -r requirements-quant.txt
+pip install -r cases/v100/gptq_vllm085/requirements-quant.txt
 python3.12 -m venv /app/vllm-venv && source /app/vllm-venv/bin/activate
 pip install torch==2.6.0 torchvision==0.25.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 pip install vllm==0.8.5 transformers==4.57.6
-pip install -r requirements-vllm085.txt
+pip install -r cases/v100/gptq_vllm085/requirements-vllm085.txt
 
 # ========== 4. 校准数据 ==========
+# 4.0 从 datahub 复制领域数据与校准数据（不要用 mv，保留 datahub 源数据）
+cd /volume/workspace/llm-deploy
+mkdir -p data
+cp -r /volume/datahub/custom_data data/custom_data
+cp -r /volume/datahub/calibration data/calibration
+
 source /app/venv-quant/bin/activate
 python llm_deploy/build_calibration_data.py --num-samples 256 --seed 42
 # 生成 v2（见步骤 4.3 脚本）

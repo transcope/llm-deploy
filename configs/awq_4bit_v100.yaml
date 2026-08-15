@@ -1,0 +1,29 @@
+# AWQ INT4 量化配置 (1Cat-vLLM V100 新方案)
+# 1Cat-vLLM SM70 内核只支持 AWQ 原生格式 (quant_method=awq) + 非对称 (带 zero-point)
+# 必须用 AutoAWQ 量化 (quantize_model.py --force-legacy-awq), 不要用 llmcompressor
+# (llmcompressor 产出 compressed-tensors 格式, 1Cat-vLLM 无法加载)
+#
+# AutoAWQ 路径 (quantize_awq_legacy) 使用的参数: zero_point / q_group_size / w_bit / version
+# scheme 为 llmcompressor 专用参数, AutoAWQ 路径会忽略
+quantization:
+  method: awq
+  w_bit: 4
+  q_group_size: 128
+  zero_point: true
+  version: GEMM
+  targets: ["Linear"]
+  ignore: ["lm_head"]
+  scheme: W4A16_ASYM
+
+calibration:
+  num_samples: 32
+  max_seq_length: 2048
+  custom_data: "data/calibration/calibration_data.jsonl"
+  dataset: "neuralmagic/LLM_compression_calibration"
+  hf_endpoint: "https://hf-mirror.com"
+  hf_cache: "/volume/hf_cache"
+
+output:
+  format: "huggingface"
+  shard_size: "4GB"
+  safetensors: true

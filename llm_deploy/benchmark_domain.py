@@ -169,7 +169,7 @@ def score_answer(model_answer: str, ground_truth: str,
 
 def call_api(base_url: str, model: str, messages: list,
              max_tokens: int = 1024, temperature: float = 0.0,
-             timeout: int = 120) -> str | None:
+             timeout: int = 120, no_thinking: bool = True) -> str | None:
     """通过 OpenAI 兼容 API 调用模型"""
     if requests is None:
         raise RuntimeError("requests 未安装, 无法使用 API 模式")
@@ -181,6 +181,9 @@ def call_api(base_url: str, model: str, messages: list,
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    # 禁用 Qwen3 thinking 模式, 避免 max_tokens 被 thinking 内容耗尽导致无实际答案
+    if no_thinking:
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
     try:
         resp = requests.post(url, json=payload, timeout=timeout)
         if resp.status_code != 200:
@@ -271,6 +274,7 @@ def evaluate_api(args):
             max_tokens=args.max_tokens,
             temperature=args.temperature,
             timeout=args.timeout,
+            no_thinking=args.no_thinking,
         )
 
         if model_answer is None:

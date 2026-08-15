@@ -262,7 +262,7 @@ WORKDIR /app
 # 复制项目文件
 COPY llm_deploy/ /app/llm_deploy/
 COPY configs/ /app/configs/
-COPY requirements-quant.txt requirements-vllm085.txt /app/
+COPY cases/v100/gptq_vllm085/requirements-quant.txt cases/v100/gptq_vllm085/requirements-vllm085.txt /app/
 COPY docker/entrypoint.sh /app/
 COPY docker/v100-deploy.sh /app/
 

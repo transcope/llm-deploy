@@ -40,8 +40,8 @@
 │  阶段1: 量化  │ ──▶ │  阶段2: 部署  │ ──▶ │  阶段3: 评测  │
 │  quantize    │     │  deploy      │     │  eval / perf │
 └──────────────┘     └──────────────┘     └──────────────┘
-quantize_model.py     deploy_server.py      benchmark_eval.py
-+ configs/*.yaml      (+ vllm)              (+ lm-eval)
+quantize_model.py     deploy_server.py      benchmark_domain.py
++ configs/*.yaml      (+ vllm)              (+ requests, API 模式)
    ↓ 产出                ↓ 产出               ↓ 产出
 ./models/<model>-<Q>   OpenAI 兼容 API       ./results/
 ```
@@ -50,9 +50,11 @@ quantize_model.py     deploy_server.py      benchmark_eval.py
 |------|------|----------|------|
 | 量化 | `llm_deploy/quantize_model.py` | `configs/<方案>.yaml` | `./models/<model>-<quant>/` |
 | 部署 | `llm_deploy/deploy_server.py` | `configs/vllm_serve.yaml` | `http://localhost:8000` |
-| 评测 | `llm_deploy/benchmark_eval.py` | （命令行参数） | `./results/` |
+| 精度评测 | `llm_deploy/benchmark_domain.py` | （命令行参数） | `./results/` |
+| 性能测试 | `llm_deploy/benchmark_eval.py --perf-test` | （命令行参数） | `./results/` |
 
-> A100 单卡可一键跑完「量化+精度评测」：`./examples/07_a100_deploy.sh all`（精度评测走 lm-eval 直连，无需先部署服务）。
+> 精度评测统一使用 `benchmark_domain.py` 领域精度评测（见 [评估协议](EVALUATION_PROTOCOL.md)）；
+> `benchmark_eval.py` 仅保留性能测试（`--perf-test`）功能。
 
 ---
 
@@ -149,26 +151,22 @@ du -sh ./models/<model>-<quant>/     # 量化后体积, 如 5.7G
 
 > 2.1 速查表里的"显存节省"是按权重量化位宽算的**理论预期**（FP16→INT4 权重部分省 75%）。真实压缩比以量化后 `du` 实测为准——`ignore: ["lm_head"]` 跳过的层、嵌入层、量化分组元数据都会吃掉一部分空间，所以实测通常略低于理论值。
 >
-> 另两个量化效果指标（精度评估、推理性能）见第 3 节，需跑 `benchmark_eval.py` 才能得到。
+> 另两个量化效果指标（精度评估、推理性能）见第 3 节：精度评估用 `benchmark_domain.py`（领域精度评测），推理性能用 `benchmark_eval.py --perf-test`。
 
 ---
 
 ## 3. 评测使用方式
 
-> **评测与部署的关系**：精度评测走 lm-eval 的 `vllm` 后端，会**自行启动一个临时 vLLM 实例**（评测完即退出），**不需要先跑 deploy**；性能测试则必须**先部署好服务**，再对 `--base-url` 发请求压测。所以「先部署再评测」只对性能测试成立——精度评测是独立的。
+> ⚠️ **标准 Benchmark 精度评测（`benchmark_eval.py --tasks`，lm-eval 的 GSM8K/HellaSwag 等）已弃用**，
+> 仅用于最初可行性验证。有了领域数据评测集后，精度评测统一使用 **`benchmark_domain.py` 领域精度评测**
+> （见 [评估协议](EVALUATION_PROTOCOL.md)）。`benchmark_eval.py` **仅保留性能测试**（`--perf-test`）功能。
+> 下文 3.1/3.2/3.4/3.5 中 `benchmark_eval.py` 的精度评测内容均为历史遗留，仅供参考，不再使用。
+
+> **评测与部署的关系**：性能测试必须**先部署好服务**，再对 `--base-url` 发请求压测。
 
 ### 3.1 评测命令模板
 
 ```bash
-# 通用模板 - 精度评测 (独立进行, 无需先部署)
-python llm_deploy/benchmark_eval.py \
-    --model <量化模型路径> \
-    --quantization <awq|gptq|fp8|compressed-tensors|bitsandbytes> \
-    --dtype <float16|bfloat16> \
-    --tasks <gsm8k,hellaswag,...> \
-    --baseline-model <基线模型ID或路径> \
-    --output ./results/<方案名>
-
 # 通用模板 - 性能测试 (必须先部署服务, 见第 4 节)
 python llm_deploy/benchmark_eval.py \
     --model <量化模型路径> \
@@ -180,9 +178,9 @@ python llm_deploy/benchmark_eval.py \
 
 `--quantization` 本地模型可省略（自动从 `config.json` 识别）；评测脚本里量化方式用 `--quantization`（注意不是量化脚本的 `--method`）。CLI 的 `--dtype`/`--gpu-memory-utilization`/`--enforce-eager`/`--max-num-seqs`/`--max-model-len` 可按硬件覆盖。
 
-> 精度评测与性能测试**共用同一个脚本** `benchmark_eval.py`，靠 `--perf-test` 开关切换：不传 = 精度评测（自带 vLLM 实例），传了 = 性能测试（打外部服务）。
+### 3.2 精度评测（已弃用，改用 benchmark_domain.py）
 
-### 3.2 精度评测
+> ⚠️ 本节为历史遗留。标准 Benchmark 精度评测已弃用，请改用 `benchmark_domain.py` 领域精度评测。
 
 用 lm-evaluation-harness 评测量化模型精度，并与基线模型对比损失：
 
@@ -235,7 +233,9 @@ python llm_deploy/benchmark_eval.py \
 | `ttft_avg_seconds` | 平均首 token 延迟 | ~50ms |
 | `latency_p50/p99_seconds` | 请求延迟分位数 | — |
 
-### 3.4 精度损失预期
+### 3.4 精度损失预期（已弃用）
+
+> ⚠️ 本节为历史遗留（标准 Benchmark 精度评测已弃用）。领域精度评测的判定标准见 [评估协议](EVALUATION_PROTOCOL.md) 第 8 节。
 
 | 任务 | 基线 → AWQ 预期损失 | 判定 |
 |------|---------------------|------|
@@ -250,33 +250,9 @@ python llm_deploy/benchmark_eval.py \
 评测完成后，所有产出保存在 `--output` 指定目录：
 
 ```bash
-# 精度评测 (benchmark_eval.py) 产出
-ls -la ./results/<方案名>/
-./results/<方案名>/
-├── baseline/                    # 基线模型评测结果
-│   └── results_<timestamp>.json     # lm-eval 原始结果 (含每任务分数)
-└── <方案名>/                        # 量化模型评测结果 (多个方案可并列)
-    └── results_<timestamp>.json
+# 性能测试 (benchmark_eval.py --perf-test) 产出
+ls -la ./results/perf/
 ```
-
-**精度损失对比表**（脚本 stdout 输出）示例：
-
-```
-===================================
-精度损失对比:
-===================================
-
-gptq:
-  gsm8k_acc: 基线=0.5840, 量化=0.5640, 损失=-3.42% 🟡
-  hellaswag_acc: 基线=0.6040, 量化=0.5960, 损失=-1.32% 🟡
-```
-
-| 标记 | 损失范围 | 含义 |
-|:----:|:--------:|:-----|
-| 🟢 | ≤ 1% | 优秀，精度几乎无损 |
-| 🟡 | 1% ~ 3% | 良好，可接受 |
-| 🟠 | 3% ~ 5% | 一般，需检查校准数据 |
-| 🔴 | > 5% | 异常，量化参数或校准数据有问题 |
 
 **领域精度评测 (benchmark_domain.py)** 产出示例：
 

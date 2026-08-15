@@ -267,15 +267,38 @@ def quantize_awq_llmcompressor(model_path: str, output_path: str, config: dict):
 
     try:
         from llmcompressor.modifiers.quantization import QuantizationModifier
-        from llmcompressor.transformers import oneshot
+        # llmcompressor 0.13+ 将 oneshot 移到顶层; 旧版在 llmcompressor.transformers
+        try:
+            from llmcompressor import oneshot
+        except ImportError:
+            from llmcompressor.transformers import oneshot
+        # AWQ 激活缩放: 必须从 llmcompressor.modifiers.awq 导入函数版 AWQModifier
+        # (它内部返回 [AWQTransformModifier, QuantizationModifier] 列表)。
+        # 注意: 不能从 llmcompressor.modifiers.transform 导入, 那里是类 (AWQTransformModifier),
+        #       不接受 targets/scheme/ignore 参数。
+        try:
+            from llmcompressor.modifiers.awq import AWQModifier
+        except ImportError:
+            from llmcompressor.modifiers.transform import AWQModifier
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as e:
         print(f"错误: 未安装 llm-compressor: {e}")
         print("       将回退到 legacy autoawq（已标记 DEPRECATED）。")
         return False
 
+    # 限制 GPU 内存, 部分层 offload 到 CPU, 避免 8B 模型量化 OOM
+    # (V100S 32GB 无法同时容纳 8B fp16 权重 + 量化临时内存)
+    import torch as _torch
+    if _torch.cuda.is_available():
+        gpu_mem = int(_torch.cuda.get_device_properties(0).total_memory / 1024**3)
+        max_gpu = max(16, int(gpu_mem * 0.7))  # 最多用 70% GPU 显存
+        max_memory = {0: f"{max_gpu}GiB", "cpu": "60GiB"}
+        print(f"[AWQ/llmcompressor] 限制 GPU 显存 {max_gpu}GiB, 其余 offload 到 CPU")
+    else:
+        max_memory = None
     model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype="auto", device_map="auto", trust_remote_code=True
+        model_path, torch_dtype="auto", device_map="auto",
+        max_memory=max_memory, trust_remote_code=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
@@ -293,14 +316,33 @@ def quantize_awq_llmcompressor(model_path: str, output_path: str, config: dict):
     # llmcompressor.oneshot 要求 dataset 是 HuggingFace Dataset (会调用 column_names/map)
     calib_dataset = to_calibration_dataset(calib_data)
 
-    recipe = QuantizationModifier(
-        targets=config.get("targets", "Linear"),
-        scheme=config.get("scheme", "W4A16"),
-        ignore=config.get("ignore", ["lm_head"]),
+    # 真正的 AWQ = AWQModifier(激活缩放) + QuantizationModifier(量化)
+    # 1Cat-vLLM SM70 内核要求非对称 (W4A16_ASYM, 带 zero-point)
+    # 注意: llmcompressor 0.13+ 的 AWQModifier 是函数, 内部返回
+    #       [AWQTransformModifier, QuantizationModifier] 列表。
+    #       必须把 scheme="W4A16_ASYM" 传给 AWQModifier, 它才会把 scheme
+    #       透传给内部的 QuantizationModifier, 否则回退到对称 W4A16。
+    scheme = config.get("scheme", "W4A16_ASYM")
+    targets = config.get("targets", "Linear")
+    ignore = config.get("ignore", ["lm_head"])
+    recipe = AWQModifier(
+        targets=targets,
+        scheme=scheme,
+        ignore=ignore,
+        duo_scaling="both",
     )
 
-    print("[AWQ/llmcompressor] 执行量化...")
-    oneshot(model=model, recipe=recipe, dataset=calib_dataset, num_calibration_samples=len(calib_data))
+    print(f"[AWQ/llmcompressor] 执行量化 (scheme={scheme}, 非对称带 zero-point)...")
+    # 限制 max_seq_length 与 batch_size, 减少校准激活内存, 避免 8B 模型 OOM
+    max_seq_len = config.get("calibration", {}).get("max_seq_length", 2048)
+    oneshot(
+        model=model,
+        recipe=recipe,
+        dataset=calib_dataset,
+        num_calibration_samples=len(calib_data),
+        max_seq_length=max_seq_len,
+        batch_size=1,
+    )
 
     os.makedirs(output_path, exist_ok=True)
     # skip_compression_stats=True: 阻止自动推断稀疏度写入 config.json, 与 GPTQ 分支一致
@@ -360,8 +402,17 @@ def quantize_awq_legacy(model_path: str, output_path: str, config: dict):
     print(f"[AWQ/legacy] 量化完成! 模型已保存到: {output_path}")
 
 
-def quantize_awq(model_path: str, output_path: str, config: dict):
-    """AWQ 量化入口：优先 llm-compressor，失败则回退 legacy"""
+def quantize_awq(model_path: str, output_path: str, config: dict, force_legacy: bool = False):
+    """AWQ 量化入口：优先 llm-compressor，失败则回退 legacy
+
+    force_legacy=True 时强制走 legacy AutoAWQ 路径。
+    注意: 1Cat-vLLM 的 SM70 内核只支持 AWQ 原生格式 (quant_method=awq),
+    而 llmcompressor 产出 compressed-tensors 格式 (quant_method=compressed-tensors),
+    两者不兼容。因此 V100 + 1Cat-vLLM 场景必须 force_legacy=True。
+    """
+    if force_legacy:
+        quantize_awq_legacy(model_path, output_path, config)
+        return
     ok = quantize_awq_llmcompressor(model_path, output_path, config)
     if not ok:
         quantize_awq_legacy(model_path, output_path, config)
@@ -373,7 +424,11 @@ def quantize_fp8_with_llmcompressor(model_path: str, output_path: str, config: d
 
     try:
         from llmcompressor.modifiers.quantization import QuantizationModifier
-        from llmcompressor.transformers import oneshot
+        # llmcompressor 0.13+ 将 oneshot 移到顶层; 旧版在 llmcompressor.transformers
+        try:
+            from llmcompressor import oneshot
+        except ImportError:
+            from llmcompressor.transformers import oneshot
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError:
         print("错误: 请安装 llm-compressor: pip install llmcompressor")
@@ -440,7 +495,11 @@ def quantize_gptq_with_llmcompressor(model_path: str, output_path: str, config: 
 
     try:
         from llmcompressor.modifiers.quantization import GPTQModifier
-        from llmcompressor.transformers import oneshot
+        # llmcompressor 0.13+ 将 oneshot 移到顶层; 旧版在 llmcompressor.transformers
+        try:
+            from llmcompressor import oneshot
+        except ImportError:
+            from llmcompressor.transformers import oneshot
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as e:
         print(f"错误: 未安装 llm-compressor: {e}")
@@ -607,7 +666,11 @@ def quantize_int8_smoothquant(model_path: str, output_path: str, config: dict):
             from llmcompressor.modifiers.quantization import SmoothQuantModifier
         except ImportError:
             from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
-        from llmcompressor.transformers import oneshot
+        # llmcompressor 0.13+ 将 oneshot 移到顶层; 旧版在 llmcompressor.transformers
+        try:
+            from llmcompressor import oneshot
+        except ImportError:
+            from llmcompressor.transformers import oneshot
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError:
         print("错误: 请安装 llm-compressor")
@@ -682,6 +745,9 @@ def main():
                         help="量化后自动执行 PPL 验证 (对比 baseline 与量化模型的 Perplexity)")
     parser.add_argument("--max-ppl-delta", type=float, default=5.0,
                         help="PPL 验证阈值 (默认 5.0, 仅 --validate 时生效)")
+    parser.add_argument("--force-legacy-awq", action="store_true",
+                        help="强制使用 legacy AutoAWQ 路径产出 AWQ 原生格式 (quant_method=awq)。"
+                             "1Cat-vLLM SM70 内核需要此格式; llmcompressor 产出 compressed-tensors 格式不兼容")
 
     args = parser.parse_args()
 
@@ -705,7 +771,7 @@ def main():
     method = config["method"]
     if method == "awq":
         check_hardware_compatibility(method)
-        quantize_awq(args.model, args.output, config)
+        quantize_awq(args.model, args.output, config, force_legacy=args.force_legacy_awq)
     elif method == "fp8":
         check_hardware_compatibility(method)
         quantize_fp8_with_llmcompressor(args.model, args.output, config)

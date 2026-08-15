@@ -9,7 +9,7 @@
 - **多种量化方案**: AWQ (推荐)、FP8 (H100+)、GPTQ、SmoothQuant W8A8
 - **高效推理引擎**: vLLM V1 引擎 (PagedAttention + Continuous Batching)
 - **标准化接口**: OpenAI-compatible API，零成本迁移
-- **完整评测体系**: lm-eval 精度评测 + 吞吐/延迟性能测试
+- **完整评测体系**: 领域精度评测 (benchmark_domain.py) + 吞吐/延迟性能测试
 - **多模态支持**: Qwen2.5-VL / DeepSeek-VL 图文推理
 - **即开即用**: 一键量化、一键部署、一键评测
 
@@ -26,7 +26,7 @@ source vllm-env/bin/activate  # Linux/Mac
 # vllm-env\Scripts\activate  # Windows
 ```
 
-`./init` 会自动尝试安装部署评测环境依赖（`requirements-vllm085.txt`，vllm 0.8.5）；
+`./init` 会自动尝试安装部署评测环境依赖（`cases/v100/gptq_vllm085/requirements-vllm085.txt`，vllm 0.8.5）；
 若本地为 macOS / 无 CUDA / Python 版本不兼容，会提示在服务器 CUDA 环境安装。
 
 服务器部署时（Docker 容器内），所有任务使用同一基础环境：
@@ -128,14 +128,7 @@ python llm_deploy/serve_vllm085.py \
 ### 5. 评测验证
 
 ```bash
-# 标准 Benchmark 精度评测 (GSM8K / HellaSwag 等)
-python llm_deploy/benchmark_eval.py \
-    --model ./models/Qwen2.5-7B-AWQ \
-    --quantization awq \
-    --tasks gsm8k,hellaswag \
-    --baseline-model Qwen/Qwen2.5-7B-Instruct
-
-# 领域精度评测 (从领域数据构建的 custom Benchmark)
+# 领域精度评测 (从领域数据构建的 custom Benchmark) —— 当前唯一精度评测方式
 python llm_deploy/benchmark_domain.py \
     --base-url http://localhost:8000 \
     --model Qwen2.5-7B-AWQ
@@ -151,6 +144,10 @@ python llm_deploy/benchmark_eval.py \
     --concurrency 10
 ```
 
+> ⚠️ **标准 Benchmark 精度评测（`benchmark_eval.py --tasks`，GSM8K/HellaSwag 等 lm-eval 任务）已弃用**，
+> 仅用于最初可行性验证。精度评测统一使用 `benchmark_domain.py` 领域精度评测；
+> `benchmark_eval.py` 仅保留性能测试（`--perf-test`）功能。
+>
 > 领域精度评测使用 `data/custom_data/` 中的领域数据构建 QA Benchmark，
 > 通过关键词召回率衡量模型在通信/数学/代码等领域的实际业务能力。
 > 详见 [评估协议](docs/EVALUATION_PROTOCOL.md)。
@@ -199,13 +196,13 @@ A100 (SM 8.0) 原生支持 bfloat16 与 AWQ GEMM kernel，是 AWQ INT4 的首选
 
 ```bash
 # 一键全流程: AWQ 量化 + 精度评测
-./examples/07_a100_deploy.sh all
+./cases/a100/07_a100_deploy.sh all
 
 # 或分阶段执行
-./examples/07_a100_deploy.sh quantize                    # 1. AWQ 量化
-./examples/07_a100_deploy.sh deploy ./models/Qwen2.5-7B-AWQ  # 2. 启动服务
-./examples/07_a100_deploy.sh eval ./models/Qwen2.5-7B-AWQ    # 3. 精度评测
-./examples/07_a100_deploy.sh perf                          # 4. 性能测试 (另开终端)
+./cases/a100/07_a100_deploy.sh quantize                    # 1. AWQ 量化
+./cases/a100/07_a100_deploy.sh deploy ./models/Qwen2.5-7B-AWQ  # 2. 启动服务
+./cases/a100/07_a100_deploy.sh eval ./models/Qwen2.5-7B-AWQ    # 3. 精度评测
+./cases/a100/07_a100_deploy.sh perf                          # 4. 性能测试 (另开终端)
 ```
 
 > 完整说明见 [docs/A100_DEPLOY_GUIDE.md](docs/A100_DEPLOY_GUIDE.md)
@@ -245,6 +242,25 @@ vllm serve Qwen/Qwen2.5-VL-7B-Instruct \
     --max-model-len 32768
 ```
 
+## V100 两方案选择（并列独立）
+
+V100 上提供**两套并列独立的部署方案**，按需选择（脚本/配置/文档各自独立）：
+
+| 维度 | 方案 A：GPTQ + vLLM 0.8.5 | 方案 B：AutoAWQ + 1Cat-vLLM |
+|------|--------------------------|----------------------------|
+| 量化格式 | 标准 GPTQ（gptqmodel 后端） | AWQ 原生格式（AutoAWQ） |
+| 推理引擎 | vLLM 0.8.5（`vllm-venv`） | 1Cat-vLLM v1.0.0（`1cat-venv`） |
+| 注意力后端 | XFORMERS | FLASH_ATTN_V100 |
+| 解码速度 | ~30 tok/s | ~90 tok/s（预期） |
+| CUDA / PyTorch | 12.6 / 2.6.0+cu124 | 12.8 / 2.9.1+cu128 |
+| 实测精度 | 39.53%（-3.49%） | 42.86%（+2.29%） |
+| 脚本目录 | `cases/v100/gptq_vllm085/` | `cases/v100/awq_1cat/` |
+| 专版文档 | [V100_DEPLOY_GUIDE.md](docs/V100_DEPLOY_GUIDE.md) | [V100_1CAT_GUIDE.md](docs/V100_1CAT_GUIDE.md) |
+| 定位 | 稳定、已验证 | 高性能、新方案 |
+
+> 两方案均支持一键全流程：`bash cases/v100/<方案目录>/deploy_all.sh all`
+> （env → quantize → serve → test → eval → perf）。
+
 ## V100 服务器 Docker 部署
 
 针对 **8卡 V100 32GB** 服务器提供完整 Docker 环境与一键部署脚本：
@@ -282,8 +298,8 @@ docker exec -it vllm-v100 bash
 		│   ├── quantize_model.py       # 模型量化转换
 		│   ├── deploy_server.py        # vLLM 服务部署
 		│   ├── serve_vllm085.py        # vLLM 0.8.5 部署服务 (V100+Qwen3 推荐)
-		│   ├── benchmark_eval.py       # 评测与性能测试
-		│   ├── benchmark_domain.py     # 领域精度评测 (API/本地模式, vllm 0.8.5)
+		│   ├── benchmark_eval.py       # 性能测试 (精度评测已弃用)
+		│   ├── benchmark_domain.py     # 领域精度评测 (API/本地模式, vllm 0.8.5) ★
 		│   ├── hf_download.py          # HuggingFace 模型下载
 		│   ├── qwen3_gptq_adapter.py   # Qwen3 GPTQ 适配器 (gptqmodel MODEL_MAP 注入)
 		│   ├── qwen3_pipeline_patch.py # Qwen3 llmcompressor pipeline 兼容补丁
@@ -292,9 +308,25 @@ docker exec -it vllm-v100 bash
 		│   └── validate_calibration.py      # 量化后 PPL 验证
 		├── cases/                      # 执行脚本 + 应用例 (按硬件组织)
 		│   ├── v100/
-		│   │   ├── activate_quant.sh       # V100 量化环境快捷激活
-		│   │   ├── activate_vllm085.sh     # V100 部署评测环境快捷激活 (vllm 0.8.5)
-		│   │   ├── activate_deploy.sh      # V100 旧部署环境快捷激活 (vllm 0.7.1)
+		│   │   ├── gptq_vllm085/           # 方案 A: GPTQ + vLLM 0.8.5 (稳定) ★
+		│   │   │   ├── install_env.sh      # 环境安装 (venv-quant + vllm-venv)
+		│   │   │   ├── quantize.sh         # GPTQ 量化 (gptqmodel 后端)
+		│   │   │   ├── serve.sh            # 启动 vLLM 0.8.5 服务
+		│   │   │   ├── benchmark.sh        # 领域精度评测
+		│   │   │   ├── deploy_all.sh       # 端到端一键 (env/quantize/serve/test/eval/perf)
+		│   │   │   ├── requirements-quant.txt   # 量化环境依赖快照
+		│   │   │   ├── requirements-vllm085.txt # 部署评测环境依赖快照 (vllm 0.8.5)
+		│   │   │   └── README.md           # 方案 A 说明
+		│   │   ├── awq_1cat/               # 方案 B: AutoAWQ + 1Cat-vLLM (高性能) ★
+		│   │   │   ├── install_env.sh      # 环境安装 (venv-quant-awq + 1cat-venv)
+		│   │   │   ├── quantize.sh         # AutoAWQ 量化 (AWQ 原生格式)
+		│   │   │   ├── serve.sh            # 启动 1Cat-vLLM 服务
+		│   │   │   ├── benchmark.sh        # 领域精度评测 (禁用 thinking)
+		│   │   │   ├── deploy_all.sh       # 端到端一键 (env/quantize/serve/test/eval/perf)
+		│   │   │   └── README.md           # 方案 B 说明
+		│   │   ├── activate_quant.sh       # V100 量化环境快捷激活 (历史)
+		│   │   ├── activate_vllm085.sh     # V100 部署评测环境快捷激活 (vllm 0.8.5, 历史)
+		│   │   ├── activate_deploy.sh      # V100 旧部署环境快捷激活 (vllm 0.7.1, 历史)
 		│   │   ├── install_quant_tools.sh  # V100 量化工具链安装 (Dockerfile 调用)
 		│   │   ├── serve_gptq.py           # V100 回退部署服务 (gptqmodel TORCH backend)
 		│   │   └── compare_models.py       # V100 回退对比评测 (原模型 vs 量化模型)
@@ -320,7 +352,8 @@ docker exec -it vllm-v100 bash
 		│   ├── CALIBRATION_GUIDE.md     # 校准数据指南
 		│   ├── EVALUATION_PROTOCOL.md   # 评估协议 (PPL + 领域精度评测)
 		│   ├── V100_SERVER_GUIDE.md     # V100 服务器操作指南 (SSH/Docker/双虚拟环境)
-		│   ├── V100_DEPLOY_GUIDE.md     # V100 部署专版
+		│   ├── V100_DEPLOY_GUIDE.md     # V100 部署专版 (方案 A: GPTQ + vLLM 0.8.5)
+		│   ├── V100_1CAT_GUIDE.md       # V100 部署专版 (方案 B: AutoAWQ + 1Cat-vLLM)
 		│   ├── A100_DEPLOY_GUIDE.md     # A100 单卡部署专版
 		│   └── GPU_ARCHITECTURE_GUIDE.md # GPU 架构兼容性指南
 		├── bak/                         # 历史版本存档 (gitignore)
@@ -329,12 +362,8 @@ docker exec -it vllm-v100 bash
 		├── results/                     # 评测结果 (gitignore)
 		├── cache/                       # HuggingFace 缓存 (gitignore)
 		├── logs/                        # 日志 (gitignore)
-		├── requirements-quant.txt       # 量化环境依赖快照
-		├── requirements-vllm085.txt     # 部署评测环境依赖快照 (vllm 0.8.5)
 		└── README.md                    # 本文件
 	```
-	└── README.md                    # 本文件
-```
 
 ## 文档导航
 
@@ -343,7 +372,8 @@ docker exec -it vllm-v100 bash
 - **[使用指南](docs/USAGE_GUIDE.md)** —— 量化/评测/部署总览 + 按 GPU 选方案（推荐先读）
 - **[校准数据指南](docs/CALIBRATION_GUIDE.md)** —— 校准样本数、数据格式、离线校准
 - **[V100 服务器操作指南](docs/V100_SERVER_GUIDE.md)** —— SSH/Docker/多虚拟环境操作（venv-quant + vllm-venv）
-- **[V100 部署指南](docs/V100_DEPLOY_GUIDE.md)** —— V100 专版（GPTQ 双后端、vLLM 0.8.5 部署、显存调参、Docker）
+- **[V100 部署指南](docs/V100_DEPLOY_GUIDE.md)** —— V100 专版（方案 A：GPTQ 双后端、vLLM 0.8.5 部署、显存调参、Docker）
+- **[V100 1Cat 部署指南](docs/V100_1CAT_GUIDE.md)** —— V100 专版（方案 B：AutoAWQ 量化、1Cat-vLLM 部署、基线对比）
 - **[A100 部署指南](docs/A100_DEPLOY_GUIDE.md)** —— A100 单卡端到端（AWQ 量化、一键脚本）
 - **[GPU 架构兼容性指南](docs/GPU_ARCHITECTURE_GUIDE.md)** —— V100/A100/H100 跨硬件迁移
 

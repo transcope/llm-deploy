@@ -17,7 +17,7 @@ if [ -d "${CONTAINER_VENV}" ]; then
     # ---- 容器环境: 复用镜像内置 venv, 跳过依赖安装 ----
     echo "检测到容器环境 (复用 ${CONTAINER_VENV})"
     source "${CONTAINER_VENV}/bin/activate"
-    echo "跳过依赖安装 (镜像已内置); 如需补装可手动: pip install -r requirements-vllm085.txt"
+    echo "跳过依赖安装 (镜像已内置); 如需补装可手动: pip install -r cases/v100/gptq_vllm085/requirements-vllm085.txt"
 else
     # ---- 本地开发: 创建项目级虚拟环境并安装依赖 ----
     # 1. 创建虚拟环境
@@ -35,10 +35,10 @@ else
 
     # 4. 安装依赖 (部署评测环境, vllm 0.8.5)
     echo "[4/4] 安装项目依赖 (部署评测环境)..."
-    if ! "${PIP}" install -r "${PROJECT_ROOT}/requirements-vllm085.txt"; then
+    if ! "${PIP}" install -r "${PROJECT_ROOT}/cases/v100/gptq_vllm085/requirements-vllm085.txt"; then
         echo ""
         echo "警告: 完整 GPU 依赖在本地安装失败（常见于 macOS / Python 3.13 / 无 CUDA）。"
-        echo "      服务器部署时请使用 CUDA 环境重新执行: pip install -r requirements-vllm085.txt"
+        echo "      服务器部署时请使用 CUDA 环境重新执行: pip install -r cases/v100/gptq_vllm085/requirements-vllm085.txt"
         echo ""
     fi
 fi
@@ -65,4 +65,4 @@ else
 fi
 echo ""
 echo "服务器如需在容器内补装依赖:"
-echo "  pip install -r requirements-vllm085.txt"
+echo "  pip install -r cases/v100/gptq_vllm085/requirements-vllm085.txt"

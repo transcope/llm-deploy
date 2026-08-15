@@ -1,5 +1,9 @@
 # 评估协议 —— 基于领域数据集的量化质量验证
 
+> ⚠️ **本文档为当前唯一的精度评测标准**。早期基于 lm-eval 的标准 Benchmark 精度评测
+> （`benchmark_eval.py --tasks`，GSM8K/HellaSwag 等）仅用于最初可行性验证，**已弃用**。
+> 精度评测统一使用本文档定义的领域精度评测（`benchmark_domain.py`）。
+
 > 本文档定义了一套完整的领域评估方案，包含两个互补维度：
 >
 > 1. **PPL 快速验证**（perplexity）—— 分钟级，衡量模型对领域文本的"困惑度"，快速发现校准数据质量问题
@@ -824,7 +828,7 @@ print(f'  状态:          {\"✅ 通过\" if q_dom[\"overall\"][\"accuracy\"] >
 
 | 错误 | 原因 | 解决 |
 |:----|:-----|:------|
-| `ModuleNotFoundError: lm_eval` | lm-eval 未安装 | `pip install lm-eval` |
+| `ModuleNotFoundError: lm_eval` | 领域评测不依赖 lm-eval（仅 requests/vllm/transformers）；若出现说明误用了已弃用的 benchmark_eval.py 精度评测 | 改用 `benchmark_domain.py` |
 | `CUDA out of memory` | 显存不足 | 加 `--dtype float16`；或减少 `--num-samples` |
 | PPL = NaN 或 Inf | 评估文本中有模型不支持的特殊 token | 检查 `eval_data.jsonl` 内容 |
 | `trust_remote_code` 错误 | 模型架构需要远程代码 | 已在代码中内置 `trust_remote_code=true` |

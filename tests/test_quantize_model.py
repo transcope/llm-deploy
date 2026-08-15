@@ -223,3 +223,148 @@ def test_check_hardware_compatibility_gptq_w8a8_pass_on_v100(monkeypatch, capsys
     qm.check_hardware_compatibility("w8a8")
     out = capsys.readouterr().out
     assert out == ""
+
+
+# ---------------------------------------------------------------------------
+# 方案 B: --force-legacy-awq / quantize_awq_legacy (AutoAWQ 路径)
+# 1Cat-vLLM 的 SM70 内核只支持 AWQ 原生格式 (quant_method=awq),
+# 必须用 AutoAWQ 产出; llmcompressor 的 compressed-tensors 格式不兼容。
+# ---------------------------------------------------------------------------
+
+
+def test_quantize_awq_force_legacy_skips_llmcompressor(monkeypatch):
+    # force_legacy=True 时强制走 legacy AutoAWQ, 绝不调用 llmcompressor
+    legacy = MagicMock()
+    llmc = MagicMock()
+    monkeypatch.setattr(qm, "quantize_awq_legacy", legacy)
+    monkeypatch.setattr(qm, "quantize_awq_llmcompressor", llmc)
+
+    qm.quantize_awq("/m", "/o", {"method": "awq"}, force_legacy=True)
+
+    legacy.assert_called_once_with("/m", "/o", {"method": "awq"})
+    llmc.assert_not_called()
+
+
+def test_quantize_awq_falls_back_to_legacy_when_llmcompressor_fails(monkeypatch):
+    # force_legacy=False 且 llmcompressor 失败时, 应回退到 legacy AutoAWQ
+    legacy = MagicMock()
+    llmc = MagicMock(return_value=False)
+    monkeypatch.setattr(qm, "quantize_awq_legacy", legacy)
+    monkeypatch.setattr(qm, "quantize_awq_llmcompressor", llmc)
+
+    qm.quantize_awq("/m", "/o", {"method": "awq"}, force_legacy=False)
+
+    llmc.assert_called_once_with("/m", "/o", {"method": "awq"})
+    legacy.assert_called_once_with("/m", "/o", {"method": "awq"})
+
+
+def test_quantize_awq_no_fallback_when_llmcompressor_succeeds(monkeypatch):
+    # force_legacy=False 且 llmcompressor 成功时, 不应回退 legacy
+    legacy = MagicMock()
+    llmc = MagicMock(return_value=True)
+    monkeypatch.setattr(qm, "quantize_awq_legacy", legacy)
+    monkeypatch.setattr(qm, "quantize_awq_llmcompressor", llmc)
+
+    qm.quantize_awq("/m", "/o", {"method": "awq"}, force_legacy=False)
+
+    llmc.assert_called_once_with("/m", "/o", {"method": "awq"})
+    legacy.assert_not_called()
+
+
+def _install_fake_awq_modules(monkeypatch):
+    """注入假的 awq / transformers 模块, 供 quantize_awq_legacy 函数内 import 使用"""
+    import sys
+    import types
+
+    fake_model = MagicMock()
+    fake_tokenizer = MagicMock()
+
+    fake_awq = types.ModuleType("awq")
+    fake_awq.AutoAWQForCausalLM = MagicMock()
+    # from_pretrained 必须返回 fake_model, 否则 model 会是另一个 MagicMock
+    fake_awq.AutoAWQForCausalLM.from_pretrained = MagicMock(return_value=fake_model)
+    monkeypatch.setitem(sys.modules, "awq", fake_awq)
+
+    fake_tf = types.ModuleType("transformers")
+    fake_tf.AutoTokenizer = MagicMock()
+    # from_pretrained 必须返回 fake_tokenizer, 否则 tokenizer 会是另一个 MagicMock
+    fake_tf.AutoTokenizer.from_pretrained = MagicMock(return_value=fake_tokenizer)
+    monkeypatch.setitem(sys.modules, "transformers", fake_tf)
+
+    return fake_model, fake_tokenizer
+
+
+def test_quantize_awq_legacy_builds_quant_config(monkeypatch, tmp_path):
+    # 验证 legacy AutoAWQ 路径从 config 正确读取量化参数 (zero_point/group_size/w_bit/version)
+    fake_model, fake_tokenizer = _install_fake_awq_modules(monkeypatch)
+    monkeypatch.setattr(qm, "get_calibration_texts", lambda cfg: ["hello"])
+    monkeypatch.setattr(qm, "format_calibration_data", lambda tok, texts: texts)
+    monkeypatch.setattr(qm, "save_quant_config", MagicMock())
+
+    config = {
+        "zero_point": True,
+        "group_size": 128,
+        "w_bit": 4,
+        "version": "GEMM",
+        "output": {"safetensors": True, "shard_size": "4GB"},
+    }
+    out = str(tmp_path / "out")
+    qm.quantize_awq_legacy("/m", out, config)
+
+    # 验证 quant_config 正确传递
+    call_kwargs = fake_model.quantize.call_args.kwargs
+    assert call_kwargs["quant_config"] == {
+        "zero_point": True,
+        "q_group_size": 128,
+        "w_bit": 4,
+        "version": "GEMM",
+    }
+    # 验证保存
+    fake_model.save_quantized.assert_called_once()
+    fake_tokenizer.save_pretrained.assert_called_once_with(out)
+
+
+def test_quantize_awq_legacy_uses_defaults_when_config_missing(monkeypatch, tmp_path):
+    # config 缺省时, quant_config 应使用默认值 (zero_point=True, group_size=128, w_bit=4, GEMM)
+    fake_model, _ = _install_fake_awq_modules(monkeypatch)
+    monkeypatch.setattr(qm, "get_calibration_texts", lambda cfg: ["hello"])
+    monkeypatch.setattr(qm, "format_calibration_data", lambda tok, texts: texts)
+    monkeypatch.setattr(qm, "save_quant_config", MagicMock())
+
+    out = str(tmp_path / "out")
+    qm.quantize_awq_legacy("/m", out, {})
+
+    call_kwargs = fake_model.quantize.call_args.kwargs
+    assert call_kwargs["quant_config"] == {
+        "zero_point": True,
+        "q_group_size": 128,
+        "w_bit": 4,
+        "version": "GEMM",
+    }
+
+
+def test_quantize_awq_legacy_handles_chat_template_calib(monkeypatch, tmp_path):
+    # 校准数据为 messages 列表 (list[list[dict]]) 时, 应走 apply_chat_template 分支
+    fake_model, fake_tokenizer = _install_fake_awq_modules(monkeypatch)
+    fake_tokenizer.apply_chat_template.return_value = "formatted"
+    monkeypatch.setattr(
+        qm, "get_calibration_texts", lambda cfg: [[{"role": "user", "content": "hi"}]]
+    )
+    monkeypatch.setattr(qm, "save_quant_config", MagicMock())
+
+    out = str(tmp_path / "out")
+    qm.quantize_awq_legacy("/m", out, {})
+
+    fake_tokenizer.apply_chat_template.assert_called_once()
+    # 校准数据应被格式化为字符串列表
+    calib = fake_model.quantize.call_args.kwargs["calib_data"]
+    assert calib == ["formatted"]
+
+
+def test_cli_has_force_legacy_awq_flag():
+    # CLI 必须提供 --force-legacy-awq 参数 (方案 B 强制 AutoAWQ 路径)
+    import inspect
+
+    src = inspect.getsource(qm.main)
+    assert "--force-legacy-awq" in src
+    assert "force_legacy=args.force_legacy_awq" in src

@@ -348,7 +348,7 @@ python llm_deploy/validate_calibration.py \
 **已知限制**：
 - PPL 与业务精度（GSM8K/HellaSwag 准确率）不完全正相关，PPL 低≠任务精度高
 - 验证耗时：7B 模型约 10~20 分钟（V100），可接受范围内
-- 需要 `lm-eval` 已安装（项目依赖的一部分）
+- PPL 验证（`validate_calibration.py`）直接使用 transformers，**不依赖 lm-eval**
 - Baseline 和量化模型需要能同时装进 GPU（或顺序加载，耗时长但省显存）
 
 ---
@@ -358,7 +358,8 @@ python llm_deploy/validate_calibration.py \
 `custom_data` 字段已在 `quantize_model.py` 的 `get_calibration_texts()` 中实现（来源 0，最高优先级）。以下介绍如何准备和配置自定义校准数据。
 
 > ⚠️ **从零恢复注意**：`data/custom_data/` 在 `.gitignore` 中，清空项目目录后 10 个领域数据源
-> （telecom_exam、comm_qa_selfinst2、math 等）全部丢失。从零执行量化前必须先恢复领域数据，
+> （telecom_exam、comm_qa_selfinst2、math 等）全部丢失。数据源已备份于容器 `/volume/datahub/`，
+> 从零执行量化前从 datahub **复制**（`cp -r`，**不要用 `mv`**）恢复领域数据，
 > 详见 [7.7 节](#77-从零恢复领域数据) 和 [FROM_SCRATCH_RUNBOOK.md 步骤 4](FROM_SCRATCH_RUNBOOK.md#4-准备校准数据)。
 
 ### 7.1 数据格式要求
@@ -549,15 +550,17 @@ calibration:
 
 #### 7.7.2 恢复方式
 
-**方式 A：从本地备份上传（推荐，保证领域精度）**：
+> ✅ **数据源已统一存放于容器 `/volume/datahub/`，无需再从本地上传。**
+> 从零恢复时直接从 datahub **复制**到项目目录（**不要用 `mv` 移动**，保留 datahub 源数据）。
+
+**方式 A：从 /volume/datahub 复制（推荐，保证领域精度）**：
 
 ```bash
-# 本地终端：上传 data/custom_data/ 到容器
-scp -r D:/project/opencode/llm-deploy/data/custom_data `
-    jiysh@192.168.192.186:/tmp/custom_data
-ssh jiysh@192.168.192.186
-docker cp /tmp/custom_data zetta_ld:/volume/workspace/llm-deploy/data/custom_data
-rm -rf /tmp/custom_data
+# 容器内执行：从 datahub 复制 custom_data 与 calibration 到项目目录
+cd /volume/workspace/llm-deploy
+mkdir -p data
+cp -r /volume/datahub/custom_data data/custom_data
+cp -r /volume/datahub/calibration data/calibration
 ```
 
 **验证数据源完整**：
@@ -569,7 +572,7 @@ python llm_deploy/build_calibration_data.py --list-sources
 # 应列出全部 10 个数据源
 ```
 
-**方式 B：无本地备份时退化为 HF 通用校准集**（精度偏离领域最优）：
+**方式 B：无 datahub 数据时退化为 HF 通用校准集**（精度偏离领域最优）：
 
 跳过领域数据恢复，在 YAML 配置中移除 `custom_data` 字段，让 `get_calibration_texts()` 回退到
 `neuralmagic/LLM_compression_calibration`（依赖 `/volume/hf_cache` 离线缓存）：
@@ -585,7 +588,7 @@ calibration:
 ```
 
 > ⚠️ 退化为 HF 通用校准集后，量化模型在通信/数学/代码等领域的精度会偏离最优。
-> 生产环境强烈建议恢复领域数据（方式 A）。
+> 生产环境强烈建议恢复领域数据（方式 A，从 `/volume/datahub` 复制）。
 
 #### 7.7.3 v2 端到端生成链路
 

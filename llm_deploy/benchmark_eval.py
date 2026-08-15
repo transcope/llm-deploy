@@ -3,17 +3,22 @@
 大模型评测脚本 - 基于 lm-evaluation-harness 和 vLLM
 支持精度评测(Accuracy)、困惑度(Perplexity)、速度评测(Throughput/Latency)
 
+> ⚠️ **精度评测已弃用**：`--tasks`（lm-eval 标准 Benchmark，如 GSM8K/HellaSwag）仅用于
+> 最初可行性验证，有了领域数据评测集后已弃用。精度评测请改用 `benchmark_domain.py`
+> （领域精度评测，见 docs/EVALUATION_PROTOCOL.md）。
+> 本脚本**仅保留性能测试**（`--perf-test`，吞吐/延迟）功能。
+
 用法:
-    # 基础精度评测
-    python benchmark_eval.py --model Qwen/Qwen2.5-7B-Instruct --tasks gsm8k,hellaswag --output results/
-
-    # 量化模型对比评测
-    python benchmark_eval.py --model ./models/Qwen2.5-7B-AWQ --quantization awq --tasks gsm8k,humaneval --baseline-model Qwen/Qwen2.5-7B-Instruct
-
-    # 性能基准测试 (吞吐/延迟)
+    # 性能基准测试 (吞吐/延迟) —— 当前唯一有效用法
     python benchmark_eval.py --model Qwen/Qwen2.5-7B-Instruct --perf-test --num-prompts 100 --max-tokens 512
 
-    # 完整评测套件
+    # [已弃用] 基础精度评测 (lm-eval 标准 Benchmark)
+    python benchmark_eval.py --model Qwen/Qwen2.5-7B-Instruct --tasks gsm8k,hellaswag --output results/
+
+    # [已弃用] 量化模型对比评测
+    python benchmark_eval.py --model ./models/Qwen2.5-7B-AWQ --quantization awq --tasks gsm8k,humaneval --baseline-model Qwen/Qwen2.5-7B-Instruct
+
+    # [已弃用] 完整评测套件
     python benchmark_eval.py --model Qwen/Qwen2.5-7B-Instruct --suite full --output results/
 """
 

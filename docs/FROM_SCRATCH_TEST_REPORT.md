@@ -100,7 +100,7 @@
 
 | # | 问题 | 影响 | 解决方案 |
 |:-:|------|------|----------|
-| **P1** | **requirements 快照依赖冲突**：`requirements-quant.txt` 锁定 torch 2.6.0(CPU)/vllm 0.8.3/compressed-tensors 0.9.2/numpy 2.1.3，与 llmcompressor 0.4.0（要 numpy<2.0 + compressed-tensors 0.9.0）冲突 | 无法安装依赖 | 按 Dockerfile 权威版本修正：torch 2.5.1/vllm 0.7.1/compressed-tensors 0.9.0/numpy 1.26.4 |
+| **P1** | **requirements 快照依赖冲突**：`cases/v100/gptq_vllm085/requirements-quant.txt` 锁定 torch 2.6.0(CPU)/vllm 0.8.3/compressed-tensors 0.9.2/numpy 2.1.3，与 llmcompressor 0.4.0（要 numpy<2.0 + compressed-tensors 0.9.0）冲突 | 无法安装依赖 | 按 Dockerfile 权威版本修正：torch 2.5.1/vllm 0.7.1/compressed-tensors 0.9.0/numpy 1.26.4 |
 | **P2** | **torch 从 PyPI 默认源装成 CPU 版**：`torch==2.5.1` 无 `+cu124` 后缀时 pip 装 CPU 版，无 CUDA 支持 | 量化无法进行 | 必须从 PyTorch cu124 索引安装，或直接下载 CUDA wheel |
 | **P3** | **vLLM 0.7.1 不支持 Qwen3 架构**：`Model architectures ['Qwen3ForCausalLM'] are not supported` | 无法用 vLLM 部署/评测 | 改用 gptqmodel + TORCH backend 部署/评测 |
 

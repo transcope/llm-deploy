@@ -1,8 +1,12 @@
-# V100 服务器部署专用指南
+# V100 服务器部署专用指南（方案 A：GPTQ + vLLM 0.8.5）
 
 > **硬件环境**: 8 x NVIDIA V100 32GB (共 256GB 显存)  
 > **Docker 基础镜像**: Ubuntu 22.04 + CUDA 12.1  
 > **适配说明**: V100 (Volta, SM 7.0) 有特殊限制，本指南针对性调整方案
+>
+> **方案选择**：本指南为 **方案 A（GPTQ + vLLM 0.8.5，稳定）**。
+> 高性能新方案 **方案 B（AutoAWQ + 1Cat-vLLM）** 见 [V100_1CAT_GUIDE.md](V100_1CAT_GUIDE.md)，
+> 脚本目录 `cases/v100/awq_1cat/`。两方案并列独立，按需选择。
 
 ---
 
@@ -66,7 +70,7 @@
 | 项目代码 | `/volume/workspace/llm-deploy/` | 脚本 + 配置 | ❌ 需恢复 |
 | 量化环境 | `/app/venv-quant/` | gptqmodel 工具链 | ❌ 需重建 |
 | 部署环境 | `/app/vllm-venv/` | vLLM 0.8.5 推理 | ❌ 需重建 |
-| 领域数据 | `data/custom_data/` | 校准数据源 | ❌ 需恢复 |
+| 领域数据 | `data/custom_data/` | 校准数据源 | ❌ 需恢复（从 `/volume/datahub/` 复制） |
 
 > ⚠️ **HF 缓存依赖**：`configs/gptq_4bit_v100_gptqmodel.yaml` 中 `hf_offline: true` 依赖
 > `/volume/hf_cache` 预下载缓存。当 `custom_data` 不可用时，`get_calibration_texts()` 回退到
@@ -312,7 +316,7 @@ vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ \
 （OpenAI 兼容 API）。
 
 **环境**：`/app/vllm-venv`（vllm 0.8.5 + torch 2.6.0+cu124 + transformers 4.57.6），
-依赖清单见 `requirements-vllm085.txt`。
+依赖清单见 `cases/v100/gptq_vllm085/requirements-vllm085.txt`。
 
 ```bash
 # 启动服务（后台，容器内）
@@ -428,7 +432,11 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 vllm serve Qwen/Qwen2.5-72B-Instruct \
 
 ## 6. 评测验证
 
-### 6.1 精度评测
+### 6.1 精度评测（已弃用）
+
+> ⚠️ **标准 Benchmark 精度评测（lm-eval `--tasks`）已弃用**，仅用于最初可行性验证。
+> 精度评测请改用 `benchmark_domain.py` 领域精度评测（见 [评估协议](EVALUATION_PROTOCOL.md)）。
+> 本节为历史遗留，仅供参考。
 
 ```bash
 # 在容器内执行
@@ -574,8 +582,8 @@ llm-deploy/
 │   ├── quantize_model.py       # 量化脚本 (V100: GPTQ/BitsAndBytes/W8A8)
 │   ├── deploy_server.py        # 通用部署脚本
 │   ├── serve_vllm085.py        # vLLM 0.8.5 部署服务 (V100+Qwen3 推荐) ★
-│   ├── benchmark_eval.py       # lm-eval 精度评测 + 性能测试
-│   ├── benchmark_domain.py     # 领域精度评测 (API 模式 + vllm 0.8.5 本地)
+│   ├── benchmark_eval.py       # 性能测试 (精度评测已弃用, 改用 benchmark_domain.py)
+│   ├── benchmark_domain.py     # 领域精度评测 (API 模式 + vllm 0.8.5 本地) ★
 │   ├── build_accuracy_benchmark.py  # 精度评测 Benchmark 数据集构建
 │   ├── build_calibration_data.py    # 校准数据集构建
 │   ├── validate_calibration.py      # PPL 验证
@@ -638,5 +646,8 @@ docker exec -it vllm-v100 bash
 ./v100-deploy.sh qwen2.5-vl-7b           # 图文理解
 
 # ========== 评测 ==========
-python llm_deploy/benchmark_eval.py --model <MODEL> --tasks gsm8k,hellaswag --output /app/results/
+# 领域精度评测 (推荐, 见 EVALUATION_PROTOCOL.md)
+python llm_deploy/benchmark_domain.py --base-url http://localhost:8000 --model <MODEL>
+# [已弃用] 标准 Benchmark 精度评测 (lm-eval)
+# python llm_deploy/benchmark_eval.py --model <MODEL> --tasks gsm8k,hellaswag --output /app/results/
 ```

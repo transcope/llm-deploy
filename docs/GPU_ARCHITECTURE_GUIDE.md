@@ -286,11 +286,12 @@ python llm_deploy/quantize_model.py \
     --output ./models/Qwen2.5-7B-GPTQ
 
 # 评测验证
-python llm_deploy/benchmark_eval.py \
-    --model ./models/Qwen2.5-7B-GPTQ \
-    --quantization gptq \
-    --tasks gsm8k,hellaswag \
-    --output ./results/
+# [已弃用] 标准 Benchmark 精度评测 (lm-eval), 改用 benchmark_domain.py 领域精度评测
+# python llm_deploy/benchmark_eval.py \
+#     --model ./models/Qwen2.5-7B-GPTQ \
+#     --quantization gptq \
+#     --tasks gsm8k,hellaswag \
+#     --output ./results/
 
 # Step 2: 复制模型文件到 A100 服务器
 # 模型文件是纯数据，直接 scp/rsync 即可

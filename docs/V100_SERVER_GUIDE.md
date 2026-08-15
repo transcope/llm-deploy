@@ -37,7 +37,7 @@ source /app/vllm-venv/bin/activate
 | vLLM 模型部署 (Qwen3) | **vllm-venv** | vLLM 0.8.5 支持 Qwen3 + V100，快 11.5 倍 |
 | 精度评测 (benchmark_domain.py) | **vllm-venv** | vLLM 0.8.5 本地评测 |
 | PPL 验证 (validate_calibration.py) | **vllm-venv** | 只需 torch + transformers |
-| lm-eval 标准评测 | **vllm-venv** | 只需 lm_eval + torch |
+| ~~lm-eval 标准评测~~（已弃用） | ~~vllm-venv~~ | 仅最初可行性验证用，改用 benchmark_domain.py |
 
 **旧环境** `/app/venv/`、`/app/venv-deploy/`（vllm 0.7.1，不支持 Qwen3）保留作为兼容，
 新任务请优先使用 `venv-quant` + `vllm-venv`。
@@ -60,11 +60,12 @@ source /app/vllm-venv/bin/activate
 | `/app/vllm-venv/` | **部署评测环境（最新）**（vllm 0.8.5 + torch 2.6.0+cu124 + transformers 4.57.6） |
 | `/volume/workspace/llm-deploy/cases/v100/activate_quant.sh` | 量化环境快捷激活脚本 |
 | `/volume/workspace/llm-deploy/cases/v100/activate_vllm085.sh` | 部署评测环境快捷激活脚本（vllm 0.8.5） |
-| `/volume/workspace/llm-deploy/requirements-quant.txt` | 量化环境依赖快照 |
-| `/volume/workspace/llm-deploy/requirements-vllm085.txt` | 部署评测环境依赖快照（vllm 0.8.5） |
+| `/volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-quant.txt` | 量化环境依赖快照 |
+| `/volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-vllm085.txt` | 部署评测环境依赖快照（vllm 0.8.5） |
 | `/volume/workspace/llm-deploy/requirements-deploy.txt` | 旧部署评测环境依赖快照（vllm 0.7.1） |
 | `/volume/workspace/llm-deploy/data/calibration/` | 校准数据目录（含 v1/v2） |
 | `/volume/workspace/llm-deploy/data/evaluation/` | 评测数据 |
+| `/volume/datahub/` | **数据源统一存放目录**（`custom_data/` 领域数据 + `calibration/` 校准数据）。从零恢复时用 `cp -r` **复制**到项目 `data/` 下，**不要用 `mv` 移动**，保留 datahub 源数据 |
 
 ---
 
@@ -91,7 +92,7 @@ source /app/vllm-venv/bin/activate
 | Qwen3 支持 | ❌ | ✅ | ❌ |
 | 量化工具 | gptqmodel 2.0.0, bitsandbytes 0.49.2, llmcompressor 0.4.0, compressed-tensors 0.9.0 | ❌ 无 | ❌ 无 |
 | 快捷激活 | `source cases/v100/activate_quant.sh` | `source cases/v100/activate_vllm085.sh` | `source cases/v100/activate_deploy.sh` |
-| 依赖快照 | `requirements-quant.txt` | `requirements-vllm085.txt` | `requirements-deploy.txt` |
+| 依赖快照 | `cases/v100/gptq_vllm085/requirements-quant.txt` | `cases/v100/gptq_vllm085/requirements-vllm085.txt` | `requirements-deploy.txt` |
 
 ### 3.3 激活方式
 
@@ -109,7 +110,7 @@ source cases/v100/activate_vllm085.sh
 
 如果环境损坏，可从对应 requirements 快照重建。
 
-> ⚠️ **gptqmodel 定制 whl 依赖**：`requirements-quant.txt` 第 60 行引用
+> ⚠️ **gptqmodel 定制 whl 依赖**：`cases/v100/gptq_vllm085/requirements-quant.txt` 第 60 行引用
 > `gptqmodel @ file:///app/gptqmodel-2.0.0+cu124torch2.5-cp312-cp312-linux_x86_64.whl`。
 > 重建 `venv-quant` 前，必须先确认该 whl 文件存在于 `/app/` 下，否则 `pip install -r` 会失败。
 
@@ -122,7 +123,7 @@ ls -la /app/gptqmodel-2.0.0*.whl 2>/dev/null && echo "whl 存在" || echo "whl �
 
 #### 3.4.2 重建 venv-quant
 
-> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`requirements-quant.txt` 中的 `torch==2.5.1` 若从
+> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`cases/v100/gptq_vllm085/requirements-quant.txt` 中的 `torch==2.5.1` 若从
 > PyPI 默认源安装，会装成 **CPU 版**（无 CUDA 支持，`torch.cuda.is_available()` 为 False），量化无法进行。
 > 必须先单独从 cu124 索引安装 torch 三件套，再安装其余依赖。
 
@@ -138,7 +139,7 @@ pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
     --index-url https://download.pytorch.org/whl/cu124
 
 # ② 再装其余依赖（torch 已满足，pip 不会重复下载 CPU 版）
-pip install -r /volume/workspace/llm-deploy/requirements-quant.txt
+pip install -r /volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-quant.txt
 ```
 
 **情况 B：whl 文件缺失**（回退，从 PyPI 安装 gptqmodel）：
@@ -149,7 +150,7 @@ source /app/venv-quant/bin/activate
 pip install --upgrade pip
 
 # 先安装除 gptqmodel 外的依赖（跳过 file:// 引用行）
-grep -v '^gptqmodel @ file://' /volume/workspace/llm-deploy/requirements-quant.txt \
+grep -v '^gptqmodel @ file://' /volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-quant.txt \
     > /tmp/req-quant-no-gptq.txt
 pip install -r /tmp/req-quant-no-gptq.txt
 
@@ -173,7 +174,7 @@ pip install -r /volume/workspace/llm-deploy/requirements-deploy.txt
 
 #### 3.4.4 重建 vllm-venv（最新，vllm 0.8.5）
 
-> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`requirements-vllm085.txt` 中的 `torch==2.6.0+cu124`
+> ⚠️ **torch 必须从 PyTorch cu124 索引安装**：`cases/v100/gptq_vllm085/requirements-vllm085.txt` 中的 `torch==2.6.0+cu124`
 > 若从 PyPI 默认源安装，会装成 **CPU 版**（无 CUDA 支持）。必须先单独从 cu124 索引安装 torch 三件套。
 
 ```bash
@@ -190,7 +191,7 @@ pip install vllm==0.8.5
 pip install transformers==4.57.6
 
 # ③ 其余依赖
-pip install -r /volume/workspace/llm-deploy/requirements-vllm085.txt
+pip install -r /volume/workspace/llm-deploy/cases/v100/gptq_vllm085/requirements-vllm085.txt
 ```
 
 > ⚠️ **版本兼容性要点**：
