@@ -1,6 +1,13 @@
 # 从零执行操作手册 —— 压缩 → 部署 → 评估全链路
 
-> **场景**：V100 服务器 `zetta_ld` 容器内，已清空项目目录（`/volume/workspace/llm-deploy`）和双虚拟环境
+> 🔒 **脱敏说明**：本文档中的 `${V100_HOST}`、`${V100_USER}`、`${V100_PASSWORD}`、`${V100_CONTAINER}`
+> 为环境变量占位符，真实值见 `configs/.env`（不提交 git）。加载方式：
+> ```bash
+> source cases/v100/load_env.sh
+> ```
+> 首次使用请先 `cp configs/.env.example configs/.env` 并填入真实值。
+
+> **场景**：V100 服务器 `${V100_CONTAINER}` 容器内，已清空项目目录（`/volume/workspace/llm-deploy`）和双虚拟环境
 > （`/app/venv-quant`、`/app/venv-deploy`），**仅保留原始模型与 HF 缓存**。仅凭本仓库的文档和脚本，
 > 从零完成「量化压缩 → 部署 → 评估」全链路。
 >
@@ -8,7 +15,7 @@
 > - `/app/local_models/Mind-SLLM-Qwen3-8B` —— 原始 FP16 模型
 > - `/volume/hf_cache` —— HF 离线缓存（校准数据集回退用）
 > - `/volume/models/` —— 既有量化模型（如需复用）
-> - `zetta_ld` 容器本身及系统级 CUDA / NVIDIA 驱动
+> - `${V100_CONTAINER}` 容器本身及系统级 CUDA / NVIDIA 驱动
 >
 > **本手册串联 8 个步骤**，每步含：前置条件 → 操作命令 → 验证方法 → 故障排查。
 > 逐步执行即可从零跑通全链路。各步细节可跳转到对应专题文档。
@@ -65,15 +72,15 @@
 
 ## 1. 登录服务器并进入容器
 
-**前置条件**：服务器开机、网络可达、`zetta_ld` 容器存在。
+**前置条件**：服务器开机、网络可达、`${V100_CONTAINER}` 容器存在。
 
 ```bash
 # 步骤 1：SSH 登录 V100 服务器
-ssh jiysh@192.168.192.186
-# 密码: jiyspcl@123
+ssh ${V100_USER}@${V100_HOST}
+# 密码: ${V100_PASSWORD}
 
-# 步骤 2：进入 zetta_ld 容器
-docker exec -it zetta_ld bash
+# 步骤 2：进入 ${V100_CONTAINER} 容器
+docker exec -it ${V100_CONTAINER} bash
 
 # 步骤 3：确认工作目录（此时应为空或不存在）
 ls -la /volume/workspace/llm-deploy/
@@ -103,10 +110,10 @@ ls -la /volume/workspace/llm-deploy/
 ```bash
 # Windows PowerShell（使用 scp 递归上传）
 scp -r D:/project/opencode/llm-deploy `
-    jiysh@192.168.192.186:/volume/workspace/llm-deploy-restore
+    ${V100_USER}@${V100_HOST}:/volume/workspace/llm-deploy-restore
 
 # 服务器端移动到目标位置（SSH 进服务器后）
-ssh jiysh@192.168.192.186
+ssh ${V100_USER}@${V100_HOST}
 rm -rf /volume/workspace/llm-deploy
 mv /volume/workspace/llm-deploy-restore /volume/workspace/llm-deploy
 ```
@@ -115,11 +122,11 @@ mv /volume/workspace/llm-deploy-restore /volume/workspace/llm-deploy
 
 ```bash
 # 本地终端：先 scp 到服务器宿主机，再 docker cp 进容器
-scp -r D:/project/opencode/llm-deploy jiysh@192.168.192.186:/tmp/llm-deploy-src
+scp -r D:/project/opencode/llm-deploy ${V100_USER}@${V100_HOST}:/tmp/llm-deploy-src
 
 # 服务器端：docker cp 进容器
-ssh jiysh@192.168.192.186
-docker cp /tmp/llm-deploy-src zetta_ld:/volume/workspace/llm-deploy
+ssh ${V100_USER}@${V100_HOST}
+docker cp /tmp/llm-deploy-src ${V100_CONTAINER}:/volume/workspace/llm-deploy
 rm -rf /tmp/llm-deploy-src
 ```
 
@@ -141,7 +148,7 @@ test -f requirements-deploy.txt && echo "OK: requirements-deploy.txt"
 **故障排查**：
 - `scp` 速度慢 → 排除 `data/`、`models/`、`results/`、`cache/`、`bak/`、`vllm-env/` 等大目录
   （它们在 `.gitignore` 中，不需要上传）
-- 权限不足 → `chown -R jiysh:jiysh /volume/workspace/llm-deploy`
+- 权限不足 → `chown -R ${V100_USER}:${V100_USER} /volume/workspace/llm-deploy`
 
 > ✅ **`data/` 目录无需上传**：领域数据（`custom_data/`）与校准数据（`calibration/`）已统一存放于
 > 容器 `/volume/datahub/`，从零恢复时用 `cp -r` **复制**到项目 `data/` 下即可（**不要用 `mv` 移动**），
@@ -494,12 +501,12 @@ print('量化格式: OK (标准 GPTQ, V100 Exllama 兼容)')
 
 ```bash
 # 启动服务（后台），llm_deploy/serve_vllm085.py 提供 OpenAI 兼容 API
-docker exec -d zetta_ld bash -c 'nohup /app/vllm-venv/bin/python /volume/workspace/llm-deploy/llm_deploy/serve_vllm085.py \
+docker exec -d ${V100_CONTAINER} bash -c 'nohup /app/vllm-venv/bin/python /volume/workspace/llm-deploy/llm_deploy/serve_vllm085.py \
     --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
     --quantization gptq --port 8000 --gpu 0 > /tmp/serve_vllm085.log 2>&1 &'
 
 # 查看启动日志（确认模型加载完成）
-docker exec zetta_ld tail -10 /tmp/serve_vllm085.log
+docker exec ${V100_CONTAINER} tail -10 /tmp/serve_vllm085.log
 # 应看到: 服务已启动: http://0.0.0.0:8000
 ```
 
@@ -539,12 +546,12 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```bash
 # 启动服务（后台），serve_gptq.py 位于 cases/v100/
-docker exec -d zetta_ld bash -c 'nohup /app/venv-deploy/bin/python /volume/workspace/llm-deploy/cases/v100/serve_gptq.py \
+docker exec -d ${V100_CONTAINER} bash -c 'nohup /app/venv-deploy/bin/python /volume/workspace/llm-deploy/cases/v100/serve_gptq.py \
     --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
     --host 0.0.0.0 --port 8000 > /tmp/serve.log 2>&1 &'
 
 # 查看启动日志（确认模型加载完成）
-docker exec zetta_ld tail -10 /tmp/serve.log
+docker exec ${V100_CONTAINER} tail -10 /tmp/serve.log
 # 应看到: 服务已启动: http://0.0.0.0:8000
 ```
 
@@ -677,11 +684,11 @@ ls -la /volume/workspace/llm-deploy/results/
 
 ```bash
 # ========== 1. 登录 ==========
-ssh jiysh@192.168.192.186
-docker exec -it zetta_ld bash
+ssh ${V100_USER}@${V100_HOST}
+docker exec -it ${V100_CONTAINER} bash
 
 # ========== 2. 恢复代码（本地终端执行） ==========
-scp -r D:/project/opencode/llm-deploy jiysh@192.168.192.186:/volume/workspace/llm-deploy
+scp -r D:/project/opencode/llm-deploy ${V100_USER}@${V100_HOST}:/volume/workspace/llm-deploy
 
 # ========== 3. 重建环境 ==========
 cd /volume/workspace/llm-deploy

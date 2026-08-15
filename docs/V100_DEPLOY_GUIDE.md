@@ -320,7 +320,7 @@ vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ \
 
 ```bash
 # 启动服务（后台，容器内）
-docker exec -d zetta_ld bash -c 'nohup /app/vllm-venv/bin/python /volume/workspace/llm-deploy/llm_deploy/serve_vllm085.py \
+docker exec -d ${V100_CONTAINER} bash -c 'nohup /app/vllm-venv/bin/python /volume/workspace/llm-deploy/llm_deploy/serve_vllm085.py \
     --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
     --quantization gptq --port 8000 --gpu 0 > /tmp/serve_vllm085.log 2>&1 &'
 
@@ -351,7 +351,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```bash
 # 启动服务（后台）
-docker exec -d zetta_ld bash -c 'nohup /app/venv-deploy/bin/python /volume/workspace/llm-deploy/cases/v100/serve_gptq.py \
+docker exec -d ${V100_CONTAINER} bash -c 'nohup /app/venv-deploy/bin/python /volume/workspace/llm-deploy/cases/v100/serve_gptq.py \
     --model /volume/models/Mind-SLLM-Qwen3-8B-GPTQ \
     --host 0.0.0.0 --port 8000 > /tmp/serve.log 2>&1 &'
 

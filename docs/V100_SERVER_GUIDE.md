@@ -1,6 +1,13 @@
 # V100 服务器连接与操作指南
 
-> 本文档记录 V100 服务器（192.168.192.186）的 SSH 连接、Docker 容器进入、环境激活等标准操作流程，以及注意事项和常见问题排查。
+> 本文档记录 V100 服务器的 SSH 连接、Docker 容器进入、环境激活等标准操作流程，以及注意事项和常见问题排查。
+
+> 🔒 **脱敏说明**：本文档中的 `${V100_HOST}`、`${V100_USER}`、`${V100_PASSWORD}`、`${V100_CONTAINER}`
+> 为环境变量占位符，真实值见 `configs/.env`（不提交 git）。加载方式：
+> ```bash
+> source cases/v100/load_env.sh
+> ```
+> 首次使用请先 `cp configs/.env.example configs/.env` 并填入真实值。
 
 ---
 
@@ -8,11 +15,11 @@
 
 ```bash
 # 步骤 1：SSH 登录 V100 服务器
-ssh jiysh@192.168.192.186
-# 密码: jiyspcl@123
+ssh ${V100_USER}@${V100_HOST}
+# 密码: ${V100_PASSWORD}
 
-# 步骤 2：进入 zetta_ld 容器
-docker exec -it zetta_ld bash
+# 步骤 2：进入 ${V100_CONTAINER} 容器
+docker exec -it ${V100_CONTAINER} bash
 
 # 步骤 3：进入项目工作目录
 cd /volume/workspace/llm-deploy
@@ -42,7 +49,7 @@ source /app/vllm-venv/bin/activate
 **旧环境** `/app/venv/`、`/app/venv-deploy/`（vllm 0.7.1，不支持 Qwen3）保留作为兼容，
 新任务请优先使用 `venv-quant` + `vllm-venv`。
 
-> ⚠️ 密码如变更请更新本文档。不要将本文档提交到公共仓库。
+> ⚠️ 密码如变更请更新 `configs/.env`（不要提交到 git）。
 
 ---
 
@@ -238,7 +245,7 @@ print('vllm-venv: OK')
 
 ```bash
 # 复制单个文件到容器
-cat "D:/project/opencode/llm-deploy/llm_deploy/build_accuracy_benchmark.py" | ssh jiysh@192.168.192.186 "docker exec -i zetta_ld bash -c 'cat > /volume/workspace/llm-deploy/llm_deploy/build_accuracy_benchmark.py'"
+cat "D:/project/opencode/llm-deploy/llm_deploy/build_accuracy_benchmark.py" | ssh ${V100_USER}@${V100_HOST} "docker exec -i ${V100_CONTAINER} bash -c 'cat > /volume/workspace/llm-deploy/llm_deploy/build_accuracy_benchmark.py'"
 ```
 
 ### 4.2 整目录同步（从零恢复项目代码时使用）
@@ -251,10 +258,10 @@ cat "D:/project/opencode/llm-deploy/llm_deploy/build_accuracy_benchmark.py" | ss
 ```bash
 # 本地终端执行
 scp -r D:/project/opencode/llm-deploy `
-    jiysh@192.168.192.186:/volume/workspace/llm-deploy-restore
+    ${V100_USER}@${V100_HOST}:/volume/workspace/llm-deploy-restore
 
 # 服务器端移动到目标位置
-ssh jiysh@192.168.192.186
+ssh ${V100_USER}@${V100_HOST}
 rm -rf /volume/workspace/llm-deploy
 mv /volume/workspace/llm-deploy-restore /volume/workspace/llm-deploy
 ```
@@ -263,11 +270,11 @@ mv /volume/workspace/llm-deploy-restore /volume/workspace/llm-deploy
 
 ```bash
 # 本地终端
-scp -r D:/project/opencode/llm-deploy jiysh@192.168.192.186:/tmp/llm-deploy-src
+scp -r D:/project/opencode/llm-deploy ${V100_USER}@${V100_HOST}:/tmp/llm-deploy-src
 
 # 服务器端
-ssh jiysh@192.168.192.186
-docker cp /tmp/llm-deploy-src zetta_ld:/volume/workspace/llm-deploy
+ssh ${V100_USER}@${V100_HOST}
+docker cp /tmp/llm-deploy-src ${V100_CONTAINER}:/volume/workspace/llm-deploy
 rm -rf /tmp/llm-deploy-src
 ```
 
@@ -337,15 +344,15 @@ tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_promp
 ### 7.1 SSH 连接失败
 
 ```
-ssh: connect to host 192.168.192.186 port 22: Connection refused
+ssh: connect to host ${V100_HOST} port 22: Connection refused
 ```
 
-**排查**: 确认服务器是否开机、网络是否可达（ping 192.168.192.186）。
+**排查**: 确认服务器是否开机、网络是否可达（ping ${V100_HOST}）。
 
 ### 7.2 Docker 容器不存在
 
 ```
-Error response from daemon: No such container: zetta_ld
+Error response from daemon: No such container: ${V100_CONTAINER}
 ```
 
 **排查**: `docker ps -a` 查看所有容器，确认容器名是否正确。
@@ -400,20 +407,19 @@ CUDA out of memory
 nvidia-smi
 
 # 查看容器日志
-docker logs zetta_ld
+docker logs ${V100_CONTAINER}
 
 # 查看所有容器
 docker ps -a
 
 # 在容器内执行单条命令（无需交互式）
-docker exec zetta_ld bash -c 'source /app/venv/bin/activate && python llm_deploy/build_accuracy_benchmark.py --help'
+docker exec ${V100_CONTAINER} bash -c 'source /app/venv/bin/activate && python llm_deploy/build_accuracy_benchmark.py --help'
 ```
 
 ---
 
 ## 9. 历史教训
 
-> ⚠️ 不要混淆服务器 IP 地址。V100 服务器的正确 IP 为 **192.168.192.186**（端口 22）。
-> 之前的错误 IP 192.168.1.24 已废弃。连接信息如有变更，请更新本文档。
+> ⚠️ 连接信息如有变更，请更新 `configs/.env`。
 >
 > 每次新会话开始，先查阅本文档确认连接参数，避免使用过时信息。

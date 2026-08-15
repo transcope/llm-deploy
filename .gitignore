@@ -26,6 +26,10 @@ dev/
 .git-credentials
 nul
 
+# Environment secrets (脱敏: 真实连接信息不提交)
+.env
+configs/.env
+
 # macOS
 .DS_Store
 

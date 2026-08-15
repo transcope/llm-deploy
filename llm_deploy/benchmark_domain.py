@@ -9,14 +9,15 @@
 
 用法:
     # 通过 API 评测 (服务启动后)
+    # 注: ${V100_HOST} 为服务器地址占位符, 真实值见 configs/.env
     python llm_deploy/benchmark_domain.py \
-        --base-url http://192.168.192.186:8000 \
+        --base-url http://${V100_HOST}:8000 \
         --model Qwen3-8B-GPTQ \
         --output results/domain_eval.json
 
     # 评测基线模型 (通过 API)
     python llm_deploy/benchmark_domain.py \
-        --base-url http://192.168.192.186:8001 \
+        --base-url http://${V100_HOST}:8001 \
         --model Mind-SLLM-Qwen3-8B \
         --output results/domain_baseline.json
 

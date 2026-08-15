@@ -1,5 +1,8 @@
 # 评估协议 —— 基于领域数据集的量化质量验证
 
+> 🔒 **脱敏说明**：本文档中的 `${V100_HOST}`、`${V100_CONTAINER}` 为环境变量占位符，
+> 真实值见 `configs/.env`（不提交 git）。加载方式：`source cases/v100/load_env.sh`。
+
 > ⚠️ **本文档为当前唯一的精度评测标准**。早期基于 lm-eval 的标准 Benchmark 精度评测
 > （`benchmark_eval.py --tasks`，GSM8K/HellaSwag 等）仅用于最初可行性验证，**已弃用**。
 > 精度评测统一使用本文档定义的领域精度评测（`benchmark_domain.py`）。
@@ -420,14 +423,14 @@ python llm_deploy/validate_calibration.py \
 ```bash
 # 评测量化模型
 python llm_deploy/benchmark_domain.py \
-    --base-url http://192.168.192.186:8000 \
+    --base-url http://${V100_HOST}:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --benchmark data/custom_data/accuracy_benchmark.jsonl \
     --output results/domain_eval_quantized.json
 
 # 评测基线模型（需另启一个服务实例）
 python llm_deploy/benchmark_domain.py \
-    --base-url http://192.168.192.186:8001 \
+    --base-url http://${V100_HOST}:8001 \
     --model Mind-SLLM-Qwen3-8B \
     --benchmark data/custom_data/accuracy_benchmark.jsonl \
     --output results/domain_eval_baseline.json
@@ -477,7 +480,7 @@ python llm_deploy/benchmark_domain.py \
 {
   "meta": {
     "mode": "api",
-    "base_url": "http://192.168.192.186:8000",
+    "base_url": "http://${V100_HOST}:8000",
     "model": "Mind-SLLM-Qwen3-8B-GPTQ",
     "benchmark": "data/custom_data/accuracy_benchmark.jsonl",
     "num_samples": 268,
@@ -663,7 +666,7 @@ for src in b['per_source']:
 
 ```bash
 # 进入容器
-docker exec -it zetta_ld bash
+docker exec -it ${V100_CONTAINER} bash
 source /app/venv/bin/activate
 cd /volume/workspace/llm-deploy
 ```
@@ -725,19 +728,19 @@ python llm_deploy/validate_calibration.py \
 
 # 评测量化模型
 python llm_deploy/benchmark_domain.py \
-    --base-url http://192.168.192.186:8000 \
+    --base-url http://${V100_HOST}:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --output results/domain_quantized.json
 
 # 评测基线模型（需另启服务）
 python llm_deploy/benchmark_domain.py \
-    --base-url http://192.168.192.186:8001 \
+    --base-url http://${V100_HOST}:8001 \
     --model Mind-SLLM-Qwen3-8B \
     --output results/domain_baseline.json
 
 # 快速验证（只测 20 条）
 python llm_deploy/benchmark_domain.py \
-    --base-url http://192.168.192.186:8000 \
+    --base-url http://${V100_HOST}:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --num-samples 20 \
     --output results/domain_smoke.json
@@ -860,7 +863,7 @@ python llm_deploy/validate_calibration.py \
 head -5 ./data/evaluation/accuracy_benchmark.jsonl > /tmp/quick_acc.jsonl
 
 python llm_deploy/benchmark_domain.py \
-    --base-url http://192.168.192.186:8000 \
+    --base-url http://${V100_HOST}:8000 \
     --model Mind-SLLM-Qwen3-8B-GPTQ \
     --benchmark /tmp/quick_acc.jsonl \
     --num-samples 5

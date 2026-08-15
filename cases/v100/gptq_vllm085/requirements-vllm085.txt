@@ -2,7 +2,7 @@
 # vLLM 0.8.5 部署评测环境 (vllm-venv) 依赖清单
 # =============================================================================
 # 用途：V100 上部署/评测 Qwen3 GPTQ 模型的最新落地方案。
-# 环境：/app/vllm-venv (python 3.12)，容器 zetta_ld，CUDA 12.6 (容器内 12.4)。
+# 环境：/app/vllm-venv (python 3.12)，容器 ${V100_CONTAINER}，CUDA 12.6 (容器内 12.4)。
 #
 # 为什么用 vLLM 0.8.5 而不是 0.7.1：
 #   - vLLM 0.7.1 不支持 Qwen3 架构 (Qwen3ForCausalLM)
