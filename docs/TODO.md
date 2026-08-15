@@ -111,5 +111,5 @@ python -m vllm.entrypoints.openai.api_server \
 
 ## 待办（未完成，不固化）
 
-- [ ] 验证快速部署脚本 `cases/v100/awq_1cat/serve.sh`（已通过脚本启动服务 PID=53243，等待就绪确认）
-- [ ] 提交 GitHub 更新
+- [x] 验证快速部署脚本 `cases/v100/awq_1cat/serve.sh`（2026-08-15 实测通过：`/v1/models` 返回模型、`/v1/chat/completions` 推理正常）
+- [x] 提交 GitHub 更新
