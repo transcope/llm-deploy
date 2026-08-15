@@ -289,17 +289,23 @@ vllm serve /app/models/Qwen2.5-7B-W8A8 \
 
 ### 4.4 AWQ 在 V100 上的注意事项
 
-AWQ 的 GEMM kernel 需要 SM 75+ (Turing+)，V100 (SM 70) 只能使用较慢的 GEMV kernel。
+> ⚠️ **本节限定官方 vLLM 的 AWQ 支持情况**。若使用 1Cat-vLLM（方案 B），V100 上 AWQ 可用且高效，见 [V100_1CAT_GUIDE.md](V100_1CAT_GUIDE.md)。
+
+官方 vLLM 的 AWQ 后端：GEMM kernel 需要 SM 75+ (Turing+)，V100 (SM 70) 只能使用较慢的 GEMV kernel。
 
 ```bash
-# AWQ 在 V100 上可用但较慢
+# AWQ 在官方 vLLM + V100 上可用但较慢
 vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ \
     --quantization awq \
     --dtype float16 \
     --gpu-memory-utilization 0.9
 ```
 
-如果已有 AWQ 模型，可以先用着；但如果从头量化，**建议使用 GPTQ 替代**。
+如果已有 AWQ 模型，可以先用着；但如果从头量化且使用**官方 vLLM**，**建议使用 GPTQ 替代**。
+
+> 💡 **注意**：V100 上的 AWQ 部署有两条路线——
+> 1. **官方 vLLM**（本节）：AWQ 走 GEMV kernel，速度受限，优先选 GPTQ
+> 2. **1Cat-vLLM**（方案 B，`FLASH_ATTN_V100` 后端）：原生支持 AWQ，V100 实测推理约 90 tok/s（方案 A 的 ~3 倍），且量化产物为通用 `quantized_model` 格式，详见 [V100_1CAT_GUIDE.md](V100_1CAT_GUIDE.md)
 
 ---
 
@@ -579,9 +585,9 @@ llm-deploy/
 │   ├── entrypoint.sh           # 容器入口脚本 (环境检查)
 │   └── v100-deploy.sh          # V100 一键部署脚本 ★
 ├── llm_deploy/                        # Python 核心代码
-│   ├── quantize_model.py       # 量化脚本 (V100: GPTQ/BitsAndBytes/W8A8)
+│   ├── quantize_model.py       # 量化脚本 (V100: GPTQ/AWQ/BitsAndBytes/W8A8)
 │   ├── deploy_server.py        # 通用部署脚本
-│   ├── serve_vllm085.py        # vLLM 0.8.5 部署服务 (V100+Qwen3 推荐) ★
+│   ├── serve_vllm085.py        # vLLM 0.8.5 部署服务 (V100+Qwen3, 方案 A) ★
 │   ├── benchmark_eval.py       # 性能测试 (精度评测已弃用, 改用 benchmark_domain.py)
 │   ├── benchmark_domain.py     # 领域精度评测 (API 模式 + vllm 0.8.5 本地) ★
 │   ├── build_accuracy_benchmark.py  # 精度评测 Benchmark 数据集构建
@@ -592,28 +598,52 @@ llm-deploy/
 │   └── qwen3_pipeline_patch.py     # Qwen3 pipeline patch
 ├── cases/                      # 执行脚本
 │   └── v100/
+│       ├── awq_1cat/               # 方案 B: AutoAWQ + 1Cat-vLLM (高性能) ★
+│       │   ├── install_env.sh      #   环境安装 (1cat-venv + venv-quant-awq)
+│       │   ├── quantize.sh         #   AutoAWQ 量化
+│       │   ├── serve.sh            #   1Cat-vLLM 部署 (FLASH_ATTN_V100) ★
+│       │   ├── benchmark.sh        #   领域精度评测
+│       │   ├── deploy_all.sh       #   一键全流程 (all/env/quantize/serve/test/eval/perf)
+│       │   └── README.md           #   方案 B 自含文档 (实测结论+命令)
+│       ├── gptq_vllm085/           # 方案 A: GPTQ + vLLM 0.8.5 (稳定)
+│       │   └── deploy_all.sh       #   一键全流程 + requirements-vllm085.txt
 │       ├── install_quant_tools.sh   # 量化工具链安装 (Dockerfile 调用)
 │       ├── activate_quant.sh        # 激活量化环境 (物理服务器双 venv)
 │       ├── activate_vllm085.sh      # 激活部署环境 (vllm-venv, vLLM 0.8.5) ★
-│       └── activate_deploy.sh       # 激活旧部署环境 (venv-deploy, vllm 0.7.1)
+│       ├── activate_deploy.sh       # 激活旧部署环境 (venv-deploy, vllm 0.7.1)
+│       ├── serve_gptq.py            # 回退部署 (gptqmodel TORCH backend)
+│       ├── compare_models.py        # 回退对比评测
+│       └── load_env.sh              # 加载 .env 连接凭据 (脱敏)
 ├── configs/
 │   ├── gptq_4bit.yaml                   # GPTQ 基础配置 (通用)
 │   ├── gptq_4bit_v100.yaml              # GPTQ V100 (llmcompressor 后端, A100+ 部署)
 │   ├── gptq_4bit_v100_gptqmodel.yaml    # GPTQ V100 (gptqmodel 后端, V100 生产推荐) ★
-│   └── w8a8.yaml                        # W8A8 配置
+│   ├── awq_4bit_v100.yaml               # AWQ V100 配置 (方案 B) ★
+│   ├── w8a8.yaml                        # W8A8 配置
+│   └── .env.example                     # 服务器连接凭据模板 (真实值 .env 不提交)
 ├── models/                     # 模型存放 (挂载卷)
 ├── results/                    # 评测结果 (挂载卷)
 ├── cache/                      # HuggingFace 缓存 (挂载卷)
-├── bak/v0/                     # 归档的旧版本文档
-│   ├── solution_report.md      # 通用方案报告 (v0 存档)
-│   └── QUANTIZATION_ISSUES_LOG.md  # 量化问题日志 (v0 存档)
+├── bak/                        # 归档的旧版本文档
+│   ├── v0/                     # v0 存档
+│   │   ├── solution_report.md      # 通用方案报告 (v0 存档)
+│   │   └── QUANTIZATION_ISSUES_LOG.md  # 量化问题日志 (v0 存档)
+│   ├── v0.2/                   # v0.2 存档
+│   ├── 1cat_awq_feedback.md    # 1Cat AWQ 反馈
+│   └── 1cat_awq_TODO.md        # 1Cat AWQ 待办
 └── docs/
-    ├── V100_DEPLOY_GUIDE.md    # 本文件
+    ├── V100_DEPLOY_GUIDE.md    # 本文件 (方案 A 部署指南)
+    ├── V100_1CAT_GUIDE.md      # 方案 B: 1Cat-vLLM + AWQ 部署指南 ★
+    ├── V100_SERVER_GUIDE.md    # V100 服务器连接与操作
     ├── USAGE_GUIDE.md          # 使用与适配总览
     ├── CALIBRATION_GUIDE.md    # 校准数据指南
     ├── EVALUATION_PROTOCOL.md  # 评估协议
+    ├── FROM_SCRATCH_RUNBOOK.md # 从零执行手册
+    ├── FROM_SCRATCH_TEST_REPORT.md # 从零测试报告
     ├── GPU_ARCHITECTURE_GUIDE.md  # GPU 架构兼容性
-    └── A100_DEPLOY_GUIDE.md    # A100 部署指南
+    ├── A100_DEPLOY_GUIDE.md    # A100 部署指南
+    ├── TESTING.md              # 单元测试指南
+    └── TODO.md                 # 待办清单
 ```
 
 ---

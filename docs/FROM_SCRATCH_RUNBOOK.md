@@ -70,6 +70,24 @@
 
 ---
 
+> 💡 **两套方案说明**
+>
+> 本手册步骤 3-8 以 **方案 A（GPTQ + vLLM 0.8.5，稳定，~30 tok/s）** 为主线。
+> V100 上还有 **方案 B（AutoAWQ + 1Cat-vLLM，高性能，~90 tok/s）**，两套方案共享
+> 步骤 1/2/4/5（登录、恢复代码、校准数据、确认模型），差异在步骤 3/6/7/8：
+>
+> | 步骤 | 方案 A (本手册) | 方案 B |
+> |------|----------------|--------|
+> | 3. 重建环境 | `venv-quant` + `vllm-venv` | `venv-quant-awq` + `1cat-venv` |
+> | 6. 量化 | GPTQ (`gptq_4bit_v100_gptqmodel.yaml`) | AWQ (`awq_4bit_v100.yaml`) |
+> | 7. 部署 | `serve_vllm085.py` (vLLM 0.8.5) | `cases/v100/awq_1cat/serve.sh` (1Cat-vLLM) |
+> | 8. 评估 | `benchmark_domain.py` API 模式 | 同上（API 评测，引擎无关） |
+>
+> 方案 B 详细命令与实测结论见 **[V100_1CAT_GUIDE.md](V100_1CAT_GUIDE.md)**，
+> 或直接使用一键脚本 `cases/v100/awq_1cat/deploy_all.sh all`。
+
+---
+
 ## 1. 登录服务器并进入容器
 
 **前置条件**：服务器开机、网络可达、`${V100_CONTAINER}` 容器存在。

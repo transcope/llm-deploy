@@ -163,6 +163,19 @@ source vllm-env/bin/activate
 python -m pytest tests/ -v
 ```
 
+测试文件一览（离线、秒级、无需 GPU）：
+
+| 测试文件 | 覆盖对象 |
+|---------|---------|
+| `test_quantize_model.py` | 量化配置加载与 CLI 覆盖 |
+| `test_deploy_server.py` | 部署命令构建与硬件约束 |
+| `test_benchmark_eval.py` | 评测分数提取与命令构建 |
+| `test_qwen3_gptq_adapter.py` | Qwen3GPTQ 适配器注入/卸载 |
+| `test_qwen3_pipeline_patch.py` | Qwen3 decoder layer 共享 PE 缓存修复 |
+| `test_match_modules_patch.py` | match_modules 数值排序补丁 |
+
+> 完整测试说明（设计要点、运行方式、新增规范）见 [docs/TESTING.md](docs/TESTING.md)
+
 ### 7. 完整使用示例
 
 `cases/` 目录提供了按硬件分类的服务器端到端命令和应用例：

@@ -40,14 +40,19 @@ source /app/vllm-venv/bin/activate
 
 | 任务 | 使用环境 | 原因 |
 |:-----|:---------|:-----|
-| 模型量化 (GPTQ/AWQ) | **venv-quant** | 含 gptqmodel 2.0.0、bitsandbytes 等量化工具链 |
-| vLLM 模型部署 (Qwen3) | **vllm-venv** | vLLM 0.8.5 支持 Qwen3 + V100，快 11.5 倍 |
-| 精度评测 (benchmark_domain.py) | **vllm-venv** | vLLM 0.8.5 本地评测 |
+| 模型量化 (GPTQ, 方案 A) | **venv-quant** | 含 gptqmodel 2.0.0、bitsandbytes 等量化工具链 |
+| 模型量化 (AWQ, 方案 B) | **venv-quant-awq** | AutoAWQ 量化工具链 (方案 B) |
+| vLLM 0.8.5 部署 (Qwen3, 方案 A) | **vllm-venv** | vLLM 0.8.5 支持 Qwen3 + V100，快 11.5 倍 |
+| 1Cat-vLLM 部署 (AWQ, 方案 B) ★ | **1cat-venv** | 1Cat-vLLM + FLASH_ATTN_V100，约 90 tok/s |
+| 精度评测 (benchmark_domain.py) | **vllm-venv** 或 **1cat-venv** | 通过 API 评测，两个推理环境均可 |
 | PPL 验证 (validate_calibration.py) | **vllm-venv** | 只需 torch + transformers |
 | ~~lm-eval 标准评测~~（已弃用） | ~~vllm-venv~~ | 仅最初可行性验证用，改用 benchmark_domain.py |
 
+> 💡 **方案速览**：方案 A = GPTQ + vLLM 0.8.5（稳定，~30 tok/s）；方案 B = AWQ + 1Cat-vLLM（高性能，~90 tok/s）。
+> 方案 B 详细说明见 [V100_1CAT_GUIDE.md](V100_1CAT_GUIDE.md)。
+
 **旧环境** `/app/venv/`、`/app/venv-deploy/`（vllm 0.7.1，不支持 Qwen3）保留作为兼容，
-新任务请优先使用 `venv-quant` + `vllm-venv`。
+新任务请优先使用 `venv-quant` + `vllm-venv`（方案 A）或 `venv-quant-awq` + `1cat-venv`（方案 B）。
 
 > ⚠️ 密码如变更请更新 `configs/.env`（不要提交到 git）。
 

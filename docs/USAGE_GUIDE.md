@@ -8,6 +8,7 @@
 > - A100 专版见 [A100_DEPLOY_GUIDE.md](A100_DEPLOY_GUIDE.md)
 > - 跨硬件兼容性见 [GPU_ARCHITECTURE_GUIDE.md](GPU_ARCHITECTURE_GUIDE.md)
 > - 从零执行全链路见 [FROM_SCRATCH_RUNBOOK.md](FROM_SCRATCH_RUNBOOK.md)
+> - 单元测试（离线、无需 GPU）见 [TESTING.md](TESTING.md)
 
 ---
 
@@ -65,9 +66,10 @@ quantize_model.py     deploy_server.py      benchmark_domain.py
 | 方案 | 配置文件 | 显存节省 | 精度保留 | 适用 GPU |
 |------|----------|----------|----------|----------|
 | **AWQ INT4** | `configs/awq_4bit.yaml` | 75% | ~95% | A100+（首选） |
+| **AWQ V100 (1Cat)** | `configs/awq_4bit_v100.yaml` | 75% | ~95% | **V100 高性能方案 B**（配合 1Cat-vLLM，~90 tok/s） |
 | **GPTQ INT4** | `configs/gptq_4bit.yaml` | 75% | ~90% | 全架构（V100 通用） |
 | GPTQ V100(llmcompressor) | `configs/gptq_4bit_v100.yaml` | 75% | ~90% | V100+（compressed-tensors 格式） |
-| GPTQ V100(gptqmodel) | `configs/gptq_4bit_v100_gptqmodel.yaml` | 75% | ~90% | **V100 实际生产用**（标准 GPTQ 格式） |
+| GPTQ V100(gptqmodel) | `configs/gptq_4bit_v100_gptqmodel.yaml` | 75% | ~90% | **V100 方案 A 生产用**（标准 GPTQ 格式） |
 | FP8 | `configs/fp8.yaml` | 50% | ~99% | H100+ |
 | W8A8 (SmoothQuant) | `configs/w8a8.yaml` | 50% | ~96% | 全架构（精度敏感） |
 | BitsAndBytes NF4 | `configs/bitsandbytes_nf4.yaml` | ~75% | 动态 | 全架构（免预量化） |
@@ -80,9 +82,11 @@ quantize_model.py     deploy_server.py      benchmark_domain.py
 你的 GPU 是什么?
 │
 ├─► V100 (SM 7.0)
-│   ├─► 首选: GPTQ INT4 (gptqmodel 后端, 标准 GPTQ 格式) → gptq_4bit_v100_gptqmodel.yaml
+│   ├─► 高性能首选: AWQ INT4 + 1Cat-vLLM (方案 B, ~90 tok/s) → awq_4bit_v100.yaml
+│   │     详见 V100_1CAT_GUIDE.md
+│   ├─► 稳定首选: GPTQ INT4 (gptqmodel 后端, 标准 GPTQ 格式) → gptq_4bit_v100_gptqmodel.yaml
 │   ├─► 精度敏感: W8A8 / BNB NF4
-│   └─► 详见 V100_DEPLOY_GUIDE.md
+│   └─► 详见 V100_DEPLOY_GUIDE.md / V100_1CAT_GUIDE.md
 │
 ├─► A100 (SM 8.0)
 │   ├─► 首选: AWQ INT4 (GEMM kernel) → awq_4bit.yaml
