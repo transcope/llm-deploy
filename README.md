@@ -4,6 +4,15 @@
 
 面向服务器 GPU 环境的大模型量化压缩与高效推理部署完整解决方案，支持 Qwen/DeepSeek 系列 7B-32B+ 模型及多模态 VLM。
 
+> **当前版本：v0.5**（V100 方案落定）
+>
+> 版本历史：
+> - **v0.5**（2026-08）：V100 双方案落定 —— 方案 A（GPTQ + vLLM 0.8.5，稳定）与方案 B（AutoAWQ + 1Cat-vLLM，高性能）并行；
+>   敏感信息脱敏（`.env`）、TODO 全量完成、新增测试指南（TESTING.md）、修复 V100 系列文档冲突
+> - **v0.3**：融合 1Cat-vLLM 方案（方案 A/B 并列独立）+ 文档更新 + 测试补充
+> - **v0.2**：vllm085 部署（src → llm_deploy 重命名、serve_vllm085、requirements-vllm085）
+> - **v0.1**：自动部署全链路验证 + Qwen3 部署支持
+
 ## 核心特性
 
 - **多种量化方案**: AWQ (推荐)、FP8 (H100+)、GPTQ、SmoothQuant W8A8
